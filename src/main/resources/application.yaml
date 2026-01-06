@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: simulator-service-testing
+  datasource:
+    url: jdbc:mysql://10.255.255.254:3306/simulator_service?useSSL=false&serverTimezone=UTC
+    username: root
+    password: 12345678
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.tool.schema: DEBUG
