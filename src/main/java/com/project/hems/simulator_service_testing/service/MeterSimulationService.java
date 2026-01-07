@@ -1,104 +1,116 @@
 package com.project.hems.simulator_service_testing.service;
 
+import com.project.hems.simulator_service_testing.domain.MeterEntity;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
-import com.project.hems.simulator_service_testing.web.exception.MeterStatusAlreadyPresentException;
 
-import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MeterSimulationService {
 
-    // We only keep a list of "Who is active". The "Data" is in Redis.
-    private final Set<Long> activeUserIds = ConcurrentHashMap.newKeySet();
-
-    private final MeterRedisService redisService; // Your upgraded publisher
+    // Inject the Redis Template configured earlier
+    private final RedisTemplate<String, MeterSnapshot> redisTemplate;
     private final MeterRepository meterRepository;
 
-    // 1. Activate: Add ID to our list & Initialize Redis State
+    // The Key used in Redis to store our Map
+    private static final String REDIS_KEY = "ACTIVE_SIMULATIONS";
+
+    // 1. Create/Activate a meter (Save to Redis Hash)
     public void activateMeter(Long userId) {
-        log.debug("Activating meter for userId: " + userId);
+        log.debug("Activating meter for userId: {}", userId);
 
-        if (activeUserIds.contains(userId)) {
-            throw new MeterStatusAlreadyPresentException(
-                    "invalid user id, meter status already present with given user id = " + userId);
-        }
-        // Add to our "To-Do List" for simulation
-        activeUserIds.add(userId);
-
-        // Create initial state and push to Redis immediately
-        MeterSnapshot initialSnapshot = MeterSnapshot.builder()
+        MeterSnapshot snapshot = MeterSnapshot.builder()
                 .userId(userId)
                 .totalEnergyKwh(0.0)
                 .currentVoltage(230.0)
                 .currentPower(0.0)
                 .build();
 
-        redisService.publish(initialSnapshot);
+        saveNewEntityToDb(snapshot);
+
+        redisTemplate.opsForHash().put(REDIS_KEY, userId.toString(), snapshot);
     }
 
-    // 2. The Loop: Fetch from Redis -> Update -> Save to Redis
+    @Async
+    private void saveNewEntityToDb(MeterSnapshot snapshot) {
+        MeterEntity meterEntity = new MeterEntity();
+        meterEntity.setUserId(snapshot.getUserId());
+        meterEntity.setLastKnownKwh(snapshot.getTotalEnergyKwh());
+
+        meterRepository.save(meterEntity);
+    }
+
+    // 2. The "Heartbeat": Updates every 1 second
     @Scheduled(fixedRate = 1000)
     public void simulateLiveReadings() {
-        if (activeUserIds.isEmpty())
-            return;
+        log.debug("simulateLiveReadings: starting live simulation power output for ach meter");
+        // Fetch ALL meters from Redis in one go (Efficiency!)
+        Map<Object, Object> rawMap = redisTemplate.opsForHash().entries(REDIS_KEY);
+        log.debug("fetching all entries of meter from redis");
+        if (rawMap.isEmpty()) {
+            log.warn("no data found from redis fetching the data from db");
+            getValuesFromDB();
+        }
 
-        for (Long userId : activeUserIds) {
-            // A. FETCH from Redis (The "Read" step)
-            MeterSnapshot snapshot = redisService.getSnapshot(userId);
+        log.debug("simulateLiveReadings: Simulating live readings for {} meters", rawMap.size());
 
-            // Safety check: If Redis key expired (TTL), recreate or skip
-            if (snapshot == null) {
-                // Option: Reload from DB or skip. Let's skip for now.
-                log.warn("Meter data missing in Redis for user " + userId);
-                continue;
-            }
+        for (Map.Entry<Object, Object> entry : rawMap.entrySet()) {
+            String userIdStr = (String) entry.getKey();
+            MeterSnapshot meter = (MeterSnapshot) entry.getValue();
 
-            // B. MODIFY (The Simulation Logic)
-            // Voltage
+            // --- SIMULATION LOGIC ---
+
+            // 1. Voltage Noise
             double noise = (Math.random() * 10) - 5;
-            snapshot.setCurrentVoltage(230.0 + noise);
+            meter.setCurrentVoltage(230.0 + noise);
 
-            // Power
+            // 2. Power Fluctuation
             if (Math.random() < 0.1) {
-                snapshot.setCurrentPower(Math.random() * 2000);
+                meter.setCurrentPower(Math.random() * 2000);
             }
 
-            // Energy (Accumulation)
-            double kwhIncrement = (snapshot.getCurrentPower() * 1) / 3_600_000.0;
-            snapshot.setTotalEnergyKwh(snapshot.getTotalEnergyKwh() + kwhIncrement);
+            // 3. Accumulate Energy
+            double kwhIncrement = (meter.getCurrentPower() * 1) / 3_600_000.0;
+            meter.setTotalEnergyKwh(meter.getTotalEnergyKwh() + kwhIncrement);
 
-            // C. WRITE (The "Publish" step)
-            redisService.publish(snapshot);
+            // --- WRITE BACK TO REDIS ---
+            // Unlike Java Map, we MUST explicitly save the updated object back to Redis
+            redisTemplate.opsForHash().put(REDIS_KEY, userIdStr, meter);
         }
     }
 
-    // 3. Database Persistence (Checkpoint)
-    @PreDestroy
-    public void saveDataToDb() {
-        log.info("Saving Redis state to Database on Shutdown...");
-        for (Long userId : activeUserIds) {
-            // Get final state from Redis
-            MeterSnapshot snapshot = redisService.getSnapshot(userId);
+    private void getValuesFromDB() {
+        List<MeterEntity> allMeterReading = meterRepository.findAll();
+        log.debug("simulateLiveReadings: fecthing all meter reading from db and putting in redis...");
 
-            if (snapshot != null) {
-                // Save only the kWh to SQL DB
-                meterRepository.findByUserId(userId).ifPresentOrElse(entity -> {
-                    entity.setLastKnownKwh(snapshot.getTotalEnergyKwh());
-                    meterRepository.save(entity);
-                }, () -> {
-                    // Create new if needed...
-                });
-            }
-        }
+        allMeterReading.forEach(meterEntity -> {
+            redisTemplate.opsForHash().put(REDIS_KEY, meterEntity, allMeterReading);
+        });
+    }
+
+    // 3. Get Data (Read from Redis)
+    public MeterSnapshot getMeterData(Long userId) {
+        // Fetch specific key from Hash
+        return (MeterSnapshot) redisTemplate.opsForHash().get(REDIS_KEY, userId.toString());
+    }
+
+    // 4. Get All Data
+    public Collection<MeterSnapshot> getAllMeters() {
+        // Fetch all values from Hash
+        return redisTemplate.opsForHash().values(REDIS_KEY).stream()
+                .map(obj -> (MeterSnapshot) obj)
+                .toList();
     }
 }
