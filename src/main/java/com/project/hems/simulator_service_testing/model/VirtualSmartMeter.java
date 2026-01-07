@@ -8,11 +8,11 @@ import lombok.ToString;
 // This represents one user's Smart Meter in memory
 public class VirtualSmartMeter {
     private Long userId;
-    private double currentVoltage; // e.g., 230.5
-    private double currentPower;   // e.g., 500.0 Watts
-    private double totalEnergyKwh; // e.g., 120.5 kWh (Accumulating)
+    private Double currentVoltage; // e.g., 230.5
+    private Double currentPower; // e.g., 500.0 Watts
+    private Double totalEnergyKwh; // e.g., 120.5 kWh (Accumulating)
 
-    public VirtualSmartMeter(Long userId, double startKwh) {
+    public VirtualSmartMeter(Long userId, Double startKwh) {
         this.userId = userId;
         this.totalEnergyKwh = startKwh;
         this.currentVoltage = 230.0;

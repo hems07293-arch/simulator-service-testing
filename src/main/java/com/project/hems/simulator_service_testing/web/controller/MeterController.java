@@ -4,11 +4,9 @@ import com.project.hems.simulator_service_testing.model.VirtualSmartMeter;
 import com.project.hems.simulator_service_testing.service.MeterSimulationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collection;
-import java.util.Map;
 
 @Slf4j
 @RestController

@@ -2,7 +2,7 @@ spring:
   application:
     name: simulator-service-testing
   datasource:
-    url: jdbc:mysql://10.255.255.254:3306/simulator_service?useSSL=false&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/simulator_service
     username: root
     password: 12345678
   jpa:
@@ -14,3 +14,6 @@ logging:
   level:
     org.hibernate.SQL: DEBUG
     org.hibernate.tool.schema: DEBUG
+
+server:
+  port: 9010

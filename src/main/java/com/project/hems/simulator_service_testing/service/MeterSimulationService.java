@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -24,14 +23,14 @@ public class MeterSimulationService {
 
     // 1. Create a meter when a user logs in / registers
     public void activateMeter(Long userId, double lastSavedKwh) {
-        log.info("Activating meter for userId: " + userId);
+        log.debug("Activating meter for userId: " + userId);
         activeMeters.put(userId, new VirtualSmartMeter(userId, lastSavedKwh));
     }
 
     // 2. The "Heartbeat": Updates every 1 second
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedRate = 1000)
     public void simulateLiveReadings() {
-        log.info("Simulating live readings for userId: " + activeMeters.keySet());
+        log.debug("Simulating live readings for userId: " + activeMeters.keySet());
         for (VirtualSmartMeter meter : activeMeters.values()) {
             // Simulate Voltage Fluctuation (225V - 235V)
             double noise = (Math.random() * 10) - 5;
@@ -58,26 +57,31 @@ public class MeterSimulationService {
 
     // 3. Method for the Controller to get data
     public VirtualSmartMeter getMeterData(Long userId) {
-        log.info("Retrieving meter data for userId: " + userId);
+        log.debug("Retrieving meter data for userId: " + userId);
         return activeMeters.get(userId);
     }
 
     // 4. Method for the Database Saver to get all data
     public Collection<VirtualSmartMeter> getAllMeters() {
-        log.info("Retrieving meter data");
+        log.debug("Retrieving meter data");
         return activeMeters.values();
     }
 
     @PreDestroy
     public void saveDataToDb() {
+        log.info("saving the data to db before closing application");
         for (VirtualSmartMeter meter : activeMeters.values()) {
+            log.debug("iterating all meter from all sites and saving them");
+
             // Find Entity by User ID
             Optional<MeterEntity> optionalMeterEntity = meterRepository.findByUserId(meter.getUserId());
 
             optionalMeterEntity.ifPresentOrElse(entity -> {
+                log.debug("already present meter then just update the total energy in kwh");
                 entity.setLastKnownKwh(meter.getTotalEnergyKwh());
                 meterRepository.save(entity);
             }, () -> {
+                log.debug("meter not present in db creating a new meter reading in db");
                 MeterEntity meterEntity = new MeterEntity();
                 meterEntity.setUserId(meter.getUserId());
                 meterEntity.setLastKnownKwh(meter.getTotalEnergyKwh());
