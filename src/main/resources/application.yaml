@@ -1,4 +1,9 @@
 spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 200ms
   application:
     name: simulator-service-testing
   datasource:

@@ -1,92 +1,104 @@
 package com.project.hems.simulator_service_testing.service;
 
-import com.project.hems.simulator_service_testing.domain.MeterEntity;
-import com.project.hems.simulator_service_testing.model.VirtualSmartMeter;
+import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
+import com.project.hems.simulator_service_testing.web.exception.MeterStatusAlreadyPresentException;
+
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.Collection;
-import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MeterSimulationService {
 
-    private final Map<Long, VirtualSmartMeter> activeMeters;
+    // We only keep a list of "Who is active". The "Data" is in Redis.
+    private final Set<Long> activeUserIds = ConcurrentHashMap.newKeySet();
+
+    private final MeterRedisService redisService; // Your upgraded publisher
     private final MeterRepository meterRepository;
 
-    // 1. Create a meter when a user logs in / registers
-    public void activateMeter(Long userId, double lastSavedKwh) {
+    // 1. Activate: Add ID to our list & Initialize Redis State
+    public void activateMeter(Long userId) {
         log.debug("Activating meter for userId: " + userId);
-        activeMeters.put(userId, new VirtualSmartMeter(userId, lastSavedKwh));
+
+        if (activeUserIds.contains(userId)) {
+            throw new MeterStatusAlreadyPresentException(
+                    "invalid user id, meter status already present with given user id = " + userId);
+        }
+        // Add to our "To-Do List" for simulation
+        activeUserIds.add(userId);
+
+        // Create initial state and push to Redis immediately
+        MeterSnapshot initialSnapshot = MeterSnapshot.builder()
+                .userId(userId)
+                .totalEnergyKwh(0.0)
+                .currentVoltage(230.0)
+                .currentPower(0.0)
+                .build();
+
+        redisService.publish(initialSnapshot);
     }
 
-    // 2. The "Heartbeat": Updates every 1 second
+    // 2. The Loop: Fetch from Redis -> Update -> Save to Redis
     @Scheduled(fixedRate = 1000)
     public void simulateLiveReadings() {
-        log.debug("Simulating live readings for userId: " + activeMeters.keySet());
-        for (VirtualSmartMeter meter : activeMeters.values()) {
-            // Simulate Voltage Fluctuation (225V - 235V)
-            double noise = (Math.random() * 10) - 5;
-            meter.setCurrentVoltage(230.0 + noise);
-            log.info("Current voltage: " + meter.getCurrentVoltage());
+        if (activeUserIds.isEmpty())
+            return;
 
-            // Simulate Power Usage (Randomly turning appliances on/off)
-            // Logic: 10% chance to change load drastically, otherwise stable
-            if (Math.random() < 0.1) {
-                log.info("Noise is set to: " + noise);
-                meter.setCurrentPower(Math.random() * 2000); // 0 to 2000 Watts
+        for (Long userId : activeUserIds) {
+            // A. FETCH from Redis (The "Read" step)
+            MeterSnapshot snapshot = redisService.getSnapshot(userId);
+
+            // Safety check: If Redis key expired (TTL), recreate or skip
+            if (snapshot == null) {
+                // Option: Reload from DB or skip. Let's skip for now.
+                log.warn("Meter data missing in Redis for user " + userId);
+                continue;
             }
-            log.info("Current power: " + meter.getCurrentPower());
 
-            // ACCUMULATE ENERGY (Physics: Power * Time)
-            // 1000W for 1 hour = 1 kWh.
-            // Since this runs every 1 second: kWh += (Watts * 1s) / (1000 * 3600)
-            double kwhIncrement = (meter.getCurrentPower() * 1) / 3_600_000.0;
-            log.info("Current kwh increment: " + kwhIncrement);
-            meter.setTotalEnergyKwh(meter.getTotalEnergyKwh() + kwhIncrement);
-            log.info("Total energy kwh: " + meter.getTotalEnergyKwh());
+            // B. MODIFY (The Simulation Logic)
+            // Voltage
+            double noise = (Math.random() * 10) - 5;
+            snapshot.setCurrentVoltage(230.0 + noise);
+
+            // Power
+            if (Math.random() < 0.1) {
+                snapshot.setCurrentPower(Math.random() * 2000);
+            }
+
+            // Energy (Accumulation)
+            double kwhIncrement = (snapshot.getCurrentPower() * 1) / 3_600_000.0;
+            snapshot.setTotalEnergyKwh(snapshot.getTotalEnergyKwh() + kwhIncrement);
+
+            // C. WRITE (The "Publish" step)
+            redisService.publish(snapshot);
         }
     }
 
-    // 3. Method for the Controller to get data
-    public VirtualSmartMeter getMeterData(Long userId) {
-        log.debug("Retrieving meter data for userId: " + userId);
-        return activeMeters.get(userId);
-    }
-
-    // 4. Method for the Database Saver to get all data
-    public Collection<VirtualSmartMeter> getAllMeters() {
-        log.debug("Retrieving meter data");
-        return activeMeters.values();
-    }
-
+    // 3. Database Persistence (Checkpoint)
     @PreDestroy
     public void saveDataToDb() {
-        log.info("saving the data to db before closing application");
-        for (VirtualSmartMeter meter : activeMeters.values()) {
-            log.debug("iterating all meter from all sites and saving them");
+        log.info("Saving Redis state to Database on Shutdown...");
+        for (Long userId : activeUserIds) {
+            // Get final state from Redis
+            MeterSnapshot snapshot = redisService.getSnapshot(userId);
 
-            // Find Entity by User ID
-            Optional<MeterEntity> optionalMeterEntity = meterRepository.findByUserId(meter.getUserId());
-
-            optionalMeterEntity.ifPresentOrElse(entity -> {
-                log.debug("already present meter then just update the total energy in kwh");
-                entity.setLastKnownKwh(meter.getTotalEnergyKwh());
-                meterRepository.save(entity);
-            }, () -> {
-                log.debug("meter not present in db creating a new meter reading in db");
-                MeterEntity meterEntity = new MeterEntity();
-                meterEntity.setUserId(meter.getUserId());
-                meterEntity.setLastKnownKwh(meter.getTotalEnergyKwh());
-                meterRepository.save(meterEntity);
-            });
+            if (snapshot != null) {
+                // Save only the kWh to SQL DB
+                meterRepository.findByUserId(userId).ifPresentOrElse(entity -> {
+                    entity.setLastKnownKwh(snapshot.getTotalEnergyKwh());
+                    meterRepository.save(entity);
+                }, () -> {
+                    // Create new if needed...
+                });
+            }
         }
     }
 }

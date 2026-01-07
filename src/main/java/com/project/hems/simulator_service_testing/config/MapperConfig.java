@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.project.hems.simulator_service_testing.domain.MeterEntity;
-import com.project.hems.simulator_service_testing.model.VirtualSmartMeter;
+import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 
 @Configuration
 public class MapperConfig {
@@ -14,17 +14,19 @@ public class MapperConfig {
     @Bean
     public ModelMapper getModelMapper() {
 
-        ModelMapper mapMeterEntityTOVirtualSmartMeter = new ModelMapper();
+        ModelMapper mapMeterEntityTOMeterSnapshot = new ModelMapper();
 
-        Converter<MeterEntity, VirtualSmartMeter> converter = ctx -> {
+        Converter<MeterEntity, MeterSnapshot> converter = ctx -> {
             MeterEntity meterEntity = ctx.getSource();
-            return new VirtualSmartMeter(
-                    meterEntity.getUserId(),
-                    meterEntity.getLastKnownKwh());
+            return MeterSnapshot
+                    .builder()
+                    .userId(meterEntity.getUserId())
+                    .totalEnergyKwh(meterEntity.getLastKnownKwh())
+                    .build();
         };
 
-        mapMeterEntityTOVirtualSmartMeter.addConverter(converter, MeterEntity.class, VirtualSmartMeter.class);
+        mapMeterEntityTOMeterSnapshot.addConverter(converter, MeterEntity.class, MeterSnapshot.class);
 
-        return mapMeterEntityTOVirtualSmartMeter;
+        return mapMeterEntityTOMeterSnapshot;
     }
 }

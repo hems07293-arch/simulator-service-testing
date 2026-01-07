@@ -1,6 +1,6 @@
 package com.project.hems.simulator_service_testing.config;
 
-import com.project.hems.simulator_service_testing.model.VirtualSmartMeter;
+import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -22,13 +22,13 @@ public class ActiveMeterMap {
     private final ModelMapper mapper;
 
     @Bean
-    public Map<Long, VirtualSmartMeter> getActiveMeter() {
+    public Map<Long, MeterSnapshot> getActiveMeter() {
         log.info("fetching all meter readings from db");
 
-        Map<Long, VirtualSmartMeter> meterReadingOfUser = new ConcurrentHashMap<>();
+        Map<Long, MeterSnapshot> meterReadingOfUser = new ConcurrentHashMap<>();
         meterRepository.findAll()
                 .forEach(meterEntity -> {
-                    meterReadingOfUser.put(meterEntity.getId(), mapper.map(meterEntity, VirtualSmartMeter.class));
+                    meterReadingOfUser.put(meterEntity.getId(), mapper.map(meterEntity, MeterSnapshot.class));
                 });
         return meterReadingOfUser;
     }
