@@ -19,6 +19,7 @@ logging:
   level:
     org.hibernate.SQL: DEBUG
     org.hibernate.tool.schema: DEBUG
+    com.project.hems.simulator_service_testing: DEBUG
 
 server:
   port: 9010

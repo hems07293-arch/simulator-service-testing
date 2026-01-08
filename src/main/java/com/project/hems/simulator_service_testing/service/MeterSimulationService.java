@@ -6,6 +6,8 @@ import com.project.hems.simulator_service_testing.repository.MeterRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.modelmapper.ModelMapper;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,6 +25,7 @@ public class MeterSimulationService {
     // Inject the Redis Template configured earlier
     private final RedisTemplate<String, MeterSnapshot> redisTemplate;
     private final MeterRepository meterRepository;
+    private final ModelMapper mapper;
 
     // The Key used in Redis to store our Map
     private static final String REDIS_KEY = "ACTIVE_SIMULATIONS";
@@ -96,8 +99,10 @@ public class MeterSimulationService {
         log.debug("simulateLiveReadings: fecthing all meter reading from db and putting in redis...");
 
         allMeterReading.forEach(meterEntity -> {
-            redisTemplate.opsForHash().put(REDIS_KEY, meterEntity, allMeterReading);
+            redisTemplate.opsForHash().put(REDIS_KEY, meterEntity.getUserId().toString(),
+                    mapper.map(meterEntity, MeterSnapshot.class));
         });
+        log.debug("simulateLiveReadings: successfully fetched all meter readings");
     }
 
     // 3. Get Data (Read from Redis)

@@ -12,6 +12,7 @@ import lombok.ToString;
 @AllArgsConstructor
 @Builder
 public class MeterSnapshot {
+    private Long meterId;
     private Long userId;
     @Builder.Default()
     private Double currentVoltage = 230.0; // e.g., 230.5
