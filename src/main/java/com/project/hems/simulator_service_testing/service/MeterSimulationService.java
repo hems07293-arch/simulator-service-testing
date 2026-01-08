@@ -7,15 +7,19 @@ import com.project.hems.simulator_service_testing.repository.MeterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.jspecify.annotations.Nullable;
 import org.modelmapper.ModelMapper;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -28,7 +32,7 @@ public class MeterSimulationService {
     private final ModelMapper mapper;
 
     // The Key used in Redis to store our Map
-    private static final String REDIS_KEY = "ACTIVE_SIMULATIONS";
+    private static final String REDIS_KEY = "simulator:userId:";
 
     // 1. Create/Activate a meter (Save to Redis Hash)
     public void activateMeter(Long userId) {
@@ -41,37 +45,43 @@ public class MeterSimulationService {
                 .currentPower(0.0)
                 .build();
 
-        saveNewEntityToDb(snapshot);
+        MeterEntity saveNewEntityToDb = saveNewEntityToDb(snapshot);
+        snapshot.setMeterId(saveNewEntityToDb.getId());
 
-        redisTemplate.opsForHash().put(REDIS_KEY, userId.toString(), snapshot);
+        redisTemplate.opsForValue()
+                .set(REDIS_KEY + userId, snapshot, 10, TimeUnit.SECONDS);
+        // redisTemplate.opsForHash().put(REDIS_KEY, userId.toString(), snapshot);
     }
 
     @Async
-    private void saveNewEntityToDb(MeterSnapshot snapshot) {
+    private MeterEntity saveNewEntityToDb(MeterSnapshot snapshot) {
         MeterEntity meterEntity = new MeterEntity();
         meterEntity.setUserId(snapshot.getUserId());
         meterEntity.setLastKnownKwh(snapshot.getTotalEnergyKwh());
 
-        meterRepository.save(meterEntity);
+        return meterRepository.save(meterEntity);
     }
 
     // 2. The "Heartbeat": Updates every 1 second
-    @Scheduled(fixedRate = 1000)
+    @Scheduled(fixedRate = 5000)
     public void simulateLiveReadings() {
         log.debug("simulateLiveReadings: starting live simulation power output for ach meter");
         // Fetch ALL meters from Redis in one go (Efficiency!)
-        Map<Object, Object> rawMap = redisTemplate.opsForHash().entries(REDIS_KEY);
+
         log.debug("fetching all entries of meter from redis");
-        if (rawMap.isEmpty()) {
+        Map<String, MeterSnapshot> allMeterSnapshot = getAllMeterSnapshot();
+        // Map<Object, Object> rawMap = redisTemplate.opsForHash().entries(REDIS_KEY);
+
+        if (allMeterSnapshot.isEmpty()) {
             log.warn("no data found from redis fetching the data from db");
             getValuesFromDB();
         }
 
-        log.debug("simulateLiveReadings: Simulating live readings for {} meters", rawMap.size());
+        log.debug("simulateLiveReadings: Simulating live readings for {} meters", allMeterSnapshot.size());
 
-        for (Map.Entry<Object, Object> entry : rawMap.entrySet()) {
-            String userIdStr = (String) entry.getKey();
-            MeterSnapshot meter = (MeterSnapshot) entry.getValue();
+        for (Map.Entry<String, MeterSnapshot> entry : allMeterSnapshot.entrySet()) {
+            String userIdStr = entry.getKey();
+            MeterSnapshot meter = entry.getValue();
 
             // --- SIMULATION LOGIC ---
 
@@ -90,7 +100,9 @@ public class MeterSimulationService {
 
             // --- WRITE BACK TO REDIS ---
             // Unlike Java Map, we MUST explicitly save the updated object back to Redis
-            redisTemplate.opsForHash().put(REDIS_KEY, userIdStr, meter);
+            redisTemplate.opsForValue()
+                    .set(userIdStr, meter, 10, TimeUnit.SECONDS);
+            // redisTemplate.opsForHash().put(REDIS_KEY, userIdStr, meter);
         }
     }
 
@@ -99,8 +111,10 @@ public class MeterSimulationService {
         log.debug("simulateLiveReadings: fecthing all meter reading from db and putting in redis...");
 
         allMeterReading.forEach(meterEntity -> {
-            redisTemplate.opsForHash().put(REDIS_KEY, meterEntity.getUserId().toString(),
-                    mapper.map(meterEntity, MeterSnapshot.class));
+            redisTemplate.opsForValue()
+                    .set(REDIS_KEY + meterEntity.getUserId().toString(), mapper.map(meterEntity, MeterSnapshot.class),
+                            10,
+                            TimeUnit.SECONDS);
         });
         log.debug("simulateLiveReadings: successfully fetched all meter readings");
     }
@@ -108,14 +122,44 @@ public class MeterSimulationService {
     // 3. Get Data (Read from Redis)
     public MeterSnapshot getMeterData(Long userId) {
         // Fetch specific key from Hash
-        return (MeterSnapshot) redisTemplate.opsForHash().get(REDIS_KEY, userId.toString());
+        return redisTemplate.opsForValue()
+                .get(REDIS_KEY + userId.toString());
     }
 
     // 4. Get All Data
-    public Collection<MeterSnapshot> getAllMeters() {
+    public Map<String, MeterSnapshot> getAllMeterSnapshot() {
+        log.debug("fetching all key value pair for meter reading");
+        Set<String> keys = redisTemplate.keys(REDIS_KEY + "*");
+
+        if (keys == null || keys.isEmpty()) {
+            log.debug("unable to find the key set with this pattern = " + REDIS_KEY);
+            return Collections.emptyMap();
+        }
+
+        Map<String, MeterSnapshot> meterReadings = new HashMap<>();
+
+        for (String keyVal : keys) {
+            log.debug("making a map with key = " + keyVal);
+
+            @Nullable
+            MeterSnapshot meterSnapshot = redisTemplate.opsForValue()
+                    .get(keyVal);
+
+            log.debug("making a map with value = " + meterSnapshot);
+            meterReadings.put(keyVal, meterSnapshot);
+        }
+
+        return meterReadings;
+    }
+
+    public List<MeterSnapshot> getAllMeters() {
         // Fetch all values from Hash
-        return redisTemplate.opsForHash().values(REDIS_KEY).stream()
-                .map(obj -> (MeterSnapshot) obj)
-                .toList();
+        Set<String> keys = redisTemplate.keys(REDIS_KEY + "*");
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+
+        return redisTemplate.opsForValue()
+                .multiGet(keys);
     }
 }

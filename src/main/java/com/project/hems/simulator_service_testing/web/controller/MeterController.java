@@ -5,7 +5,7 @@ import com.project.hems.simulator_service_testing.service.MeterSimulationService
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Collection;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,9 +30,9 @@ public class MeterController {
     }
 
     @GetMapping("/get-all-meter-data")
-    public Collection<MeterSnapshot> getAllMeterData() {
+    public Map<String, MeterSnapshot> getAllMeterData() {
         log.info("get meter data");
-        return meterSimulationService.getAllMeters();
+        return meterSimulationService.getAllMeterSnapshot();
     }
 
     @PostMapping("/activate-meter/{userId}")

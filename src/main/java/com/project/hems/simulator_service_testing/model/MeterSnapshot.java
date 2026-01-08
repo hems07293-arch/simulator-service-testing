@@ -12,12 +12,13 @@ import lombok.ToString;
 @AllArgsConstructor
 @Builder
 public class MeterSnapshot {
+
     private Long meterId;
     private Long userId;
     @Builder.Default()
-    private Double currentVoltage = 230.0; // e.g., 230.5
+    private Double currentVoltage = 230.0;
     @Builder.Default()
-    private Double currentPower = 0.0; // e.g., 500.0 Watts
-    private Double totalEnergyKwh; // e.g., 120.5 kWh (Accumulating)
+    private Double currentPower = 0.0;
+    private Double totalEnergyKwh;
 
 }
