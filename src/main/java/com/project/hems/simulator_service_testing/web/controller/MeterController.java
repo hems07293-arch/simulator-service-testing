@@ -1,7 +1,7 @@
 package com.project.hems.simulator_service_testing.web.controller;
 
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
-import com.project.hems.simulator_service_testing.service.MeterSimulationService;
+import com.project.hems.simulator_service_testing.service.MeterManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,23 +21,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class MeterController {
 
-    private final MeterSimulationService meterSimulationService;
+    private final MeterManagementService meterManagementService;
 
     @GetMapping("/get-meter-data/{userId}")
     public ResponseEntity<MeterSnapshot> getMeterData(@PathVariable Long userId) {
         log.info("get meter data for userId: {}", userId);
-        return new ResponseEntity<>(meterSimulationService.getMeterData(userId), HttpStatus.OK);
+        return new ResponseEntity<>(meterManagementService.getMeterData(userId), HttpStatus.OK);
     }
 
     @GetMapping("/get-all-meter-data")
     public Map<String, MeterSnapshot> getAllMeterData() {
         log.info("get meter data");
-        return meterSimulationService.getAllMeterSnapshot();
+        return meterManagementService.getAllMeterSnapshot();
     }
 
     @PostMapping("/activate-meter/{userId}")
     public void activateMeterData(@PathVariable Long userId) {
         log.info("activate meter: {}", userId);
-        meterSimulationService.activateMeter(userId);
+        meterManagementService.activateMeter(userId);
     }
 }

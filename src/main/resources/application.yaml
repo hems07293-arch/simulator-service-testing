@@ -23,3 +23,7 @@ logging:
 
 server:
   port: 9010
+
+simulation-redis:
+  config:
+    REDIS_KEY: "simulator:userId:"
