@@ -1,5 +1,6 @@
 package com.project.hems.simulator_service_testing.service;
 
+import com.project.hems.simulator_service_testing.config.SimulationRedisProperties;
 import com.project.hems.simulator_service_testing.domain.MeterEntity;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
@@ -8,8 +9,6 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -21,16 +20,12 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 @Setter
 @Service
-@ConfigurationProperties(prefix = "simulation-redis.config")
 public class MeterManagementService {
     // Inject the Redis Template configured earlier
     private final RedisTemplate<String, MeterSnapshot> redisTemplate;
     private final MeterRepository meterRepository;
     private final ModelMapper mapper;
-
-    // The Key used in Redis to store our Map
-    @Value("${simulation-redis.config.redis-key}")
-    private String REDIS_KEY;
+    private final SimulationRedisProperties simulationRedisProperties;
 
     // 1. Create / Activate a meter (Persist to DB + Cache to Redis)
     public void activateMeter(Long userId) {
@@ -58,7 +53,7 @@ public class MeterManagementService {
 
         // Cache the snapshot in Redis with TTL for fast access
         redisTemplate.opsForValue()
-                .set(REDIS_KEY + userId, snapshot, 10, TimeUnit.SECONDS);
+                .set(simulationRedisProperties.getREDIS_KEY() + userId, snapshot, 10, TimeUnit.SECONDS);
 
         log.info("activateMeter: meter snapshot cached in Redis for userId={} with TTL=10s", userId);
     }
@@ -87,7 +82,7 @@ public class MeterManagementService {
         log.debug("getMeterData: fetching meter snapshot from Redis for userId={}", userId);
 
         MeterSnapshot snapshot = redisTemplate.opsForValue()
-                .get(REDIS_KEY + userId.toString());
+                .get(simulationRedisProperties.getREDIS_KEY() + userId.toString());
 
         if (snapshot == null) {
             log.warn("getMeterData: no meter snapshot found in Redis for userId={}", userId);
@@ -103,7 +98,7 @@ public class MeterManagementService {
 
         log.debug("getAllMeters: fetching all meter keys from Redis");
 
-        Set<String> keys = redisTemplate.keys(REDIS_KEY + "*");
+        Set<String> keys = redisTemplate.keys(simulationRedisProperties.getREDIS_KEY() + "*");
 
         if (keys == null || keys.isEmpty()) {
             log.warn("getAllMeters: no meter keys found in Redis");
@@ -126,10 +121,10 @@ public class MeterManagementService {
 
         log.debug("getAllMeterSnapshot: fetching all meter key-value pairs from Redis");
 
-        Set<String> keys = redisTemplate.keys(REDIS_KEY + "*");
+        Set<String> keys = redisTemplate.keys(simulationRedisProperties.getREDIS_KEY() + "*");
 
         if (keys == null || keys.isEmpty()) {
-            log.warn("getAllMeterSnapshot: no Redis keys found with pattern={}", REDIS_KEY);
+            log.warn("getAllMeterSnapshot: no Redis keys found with pattern={}", simulationRedisProperties.getREDIS_KEY());
             return Collections.emptyMap();
         }
 
@@ -176,7 +171,7 @@ public class MeterManagementService {
 
             redisTemplate.opsForValue()
                     .set(
-                            REDIS_KEY + meterEntity.getUserId().toString(),
+                            simulationRedisProperties.getREDIS_KEY() + meterEntity.getUserId().toString(),
                             snapshot,
                             10,
                             TimeUnit.SECONDS

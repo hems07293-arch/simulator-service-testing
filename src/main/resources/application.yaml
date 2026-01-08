@@ -26,4 +26,4 @@ server:
 
 simulation-redis:
   config:
-    REDIS_KEY: "simulator:userId:"
+    redis-key: "simulator:userId:"

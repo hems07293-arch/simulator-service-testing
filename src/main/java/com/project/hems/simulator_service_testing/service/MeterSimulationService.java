@@ -6,8 +6,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -19,16 +17,12 @@ import java.util.concurrent.TimeUnit;
 @Service
 @Setter
 @RequiredArgsConstructor
-@ConfigurationProperties(prefix = "simulation-redis.config")
 public class MeterSimulationService {
 
     // Inject the Redis Template configured earlier
     private final RedisTemplate<String, MeterSnapshot> redisTemplate;
     private final MeterManagementService meterManagementService;
 
-    // The Key used in Redis to store our Map
-    @Value("${simulation-redis.config.redis-key}")
-    private String REDIS_KEY ;
 
     @Scheduled(fixedRate = 5000)
     public void simulateLiveReadings() {
