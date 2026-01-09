@@ -30,7 +30,7 @@ public class MeterEntity {
     @Enumerated(EnumType.STRING)
     private ChargingStatus chargingStatus;
 
-    // 🔋 Battery (energy-based)
+    // Battery (energy-based)
     private Double batteryCapacityWh;
     private Double batteryRemainingWh;
 }
