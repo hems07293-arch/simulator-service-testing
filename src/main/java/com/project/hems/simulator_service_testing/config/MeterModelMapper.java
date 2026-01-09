@@ -24,8 +24,11 @@ public class MeterModelMapper {
 
                     return MeterSnapshot.builder()
                             .meterId(source.getId())
-                            .totalEnergyKwh(source.getLastKnownKwh())
                             .userId(source.getUserId())
+                            .totalEnergyKwh(source.getLastKnownEnergyKwh())
+                            .chargingStatus(source.getChargingStatus())
+                            .batteryCapacityWh(source.getBatteryCapacityWh())
+                            .batteryRemainingWh(source.getBatteryRemainingWh())
                             .build();
                 });
 
@@ -36,7 +39,10 @@ public class MeterModelMapper {
                     MeterEntity entity = new MeterEntity();
                     entity.setId(source.getMeterId());
                     entity.setUserId(source.getUserId());
-                    entity.setLastKnownKwh(source.getTotalEnergyKwh());
+                    entity.setLastKnownEnergyKwh(source.getTotalEnergyKwh());
+                    entity.setChargingStatus(source.getChargingStatus());
+                    entity.setBatteryCapacityWh(source.getBatteryCapacityWh());
+                    entity.setBatteryRemainingWh(source.getBatteryRemainingWh());
                     return entity;
                 });
 

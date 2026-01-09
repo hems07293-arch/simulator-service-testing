@@ -43,7 +43,8 @@ public class SimulationShutdownListener {
                     .ifPresentOrElse(entity -> {
 
                         // Existing meter found — update last known energy value
-                        entity.setLastKnownKwh(meter.getTotalEnergyKwh());
+                        entity.setLastKnownEnergyKwh(meter.getTotalEnergyKwh());
+                        entity.setBatteryRemainingWh(meter.getBatteryRemainingWh());
                         meterRepository.save(entity);
 
                         log.trace("onShutdown: updated existing meter [userId={}, lastKnownKwh={}]",
@@ -54,7 +55,10 @@ public class SimulationShutdownListener {
                         // No existing meter — create a new DB record as a safety fallback
                         MeterEntity meterEntity = new MeterEntity();
                         meterEntity.setUserId(meter.getUserId());
-                        meterEntity.setLastKnownKwh(meter.getTotalEnergyKwh());
+                        meterEntity.setLastKnownEnergyKwh(meter.getTotalEnergyKwh());
+                        meterEntity.setBatteryRemainingWh(meter.getBatteryRemainingWh());
+                        meterEntity.setBatteryCapacityWh(meter.getBatteryCapacityWh());
+
                         meterRepository.save(meterEntity);
 
                         log.trace("onShutdown: created new meter entity [userId={}, lastKnownKwh={}]",
