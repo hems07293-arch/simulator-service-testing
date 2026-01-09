@@ -70,9 +70,9 @@ public class MeterPowerFlowService {
             return;
         }
 
-        // Idempotent state transition: only switch if not already discharging
-        if (meterSnapshot.getChargingStatus() == ChargingStatus.DISCHARGING) {
-            log.debug("stopDispatchingPower: Meter already in DISCHARGING state [userId={}]", userId);
+        // Idempotent state transition: only switch if not already charging
+        if (meterSnapshot.getChargingStatus() == ChargingStatus.CHARGING) {
+            log.debug("stopDispatchingPower: Meter already in CHARGING state [userId={}]", userId);
             return;
         }
 
@@ -82,7 +82,7 @@ public class MeterPowerFlowService {
                 meterSnapshot.getChargingStatus());
 
         // Update battery flow direction
-        meterSnapshot.setChargingStatus(ChargingStatus.CHARGING);
+        meterSnapshot.setChargingStatus(ChargingStatus.DISCHARGING);
 
         // Persist updated snapshot back to Redis
         redisTemplate.opsForValue().set(redisKey, meterSnapshot);

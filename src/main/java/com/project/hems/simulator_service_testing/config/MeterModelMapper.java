@@ -43,6 +43,7 @@ public class MeterModelMapper {
                     entity.setChargingStatus(source.getChargingStatus());
                     entity.setBatteryCapacityWh(source.getBatteryCapacityWh());
                     entity.setBatteryRemainingWh(source.getBatteryRemainingWh());
+                    entity.setBatterySoc(source.getBatterySoc());
                     return entity;
                 });
 

@@ -43,6 +43,7 @@ public class MeterManagementService {
                 .batteryRemainingWh(0.0)
                 .batteryCapacityWh(batteryCapacity)
                 .chargingStatus(ChargingStatus.CHARGING)
+                .batterySoc(0)
                 .build();
 
         log.debug("activateMeter: initial meter snapshot created for userId={}", userId);

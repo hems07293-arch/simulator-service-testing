@@ -33,4 +33,5 @@ public class MeterEntity {
     // Battery (energy-based)
     private Double batteryCapacityWh;
     private Double batteryRemainingWh;
+    private Integer batterySoc;
 }

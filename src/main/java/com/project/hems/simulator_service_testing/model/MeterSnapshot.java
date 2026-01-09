@@ -33,12 +33,15 @@ public class MeterSnapshot {
     private Double batteryCapacityWh; // max energy
     private Double batteryRemainingWh; // current energy
 
+    private Integer batterySoc;
+
     /** Derived, never persisted */
     public Integer getBatterySoc() {
         if (batteryCapacityWh == null || batteryCapacityWh == 0) {
             return 0;
         }
-        return (int) Math.round(
+        this.batterySoc = (int) Math.round(
                 (batteryRemainingWh / batteryCapacityWh) * 100);
+        return batterySoc;
     }
 }

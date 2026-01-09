@@ -1,13 +1,16 @@
 package com.project.hems.simulator_service_testing.service;
 
+import com.project.hems.simulator_service_testing.domain.MeterEntity;
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.repository.MeterRepository;
 import com.project.hems.simulator_service_testing.web.exception.InvalidBatteryStatusException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import org.modelmapper.ModelMapper;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,8 @@ public class MeterSimulationService {
     // Inject the Redis Template configured earlier
     private final RedisTemplate<String, MeterSnapshot> redisTemplate;
     private final MeterManagementService meterManagementService;
+    private final MeterRepository meterRepository;
+    private final ModelMapper mapper;
 
     private static final double DELTA_SECONDS = 5.0;
     private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
@@ -36,6 +41,27 @@ public class MeterSimulationService {
     private void simulatePowerFluctuation(MeterSnapshot meter, double maxPower) {
         if (Math.random() < 0.1) {
             meter.setCurrentPower(Math.random() * maxPower);
+        }
+    }
+
+    @Scheduled(fixedRate = 300000)
+    public void saveMeterSnapshotToDB() {
+        log.debug("saveMeterSnapshotToDB: scheduler triggered");
+
+        Map<String, MeterSnapshot> snapshots = meterManagementService.getAllMeterSnapshot();
+
+        if (snapshots.isEmpty()) {
+            log.warn("saveMeterSnapshotToDB: Redis empty, returning back");
+            return;
+        }
+
+        log.info("saveMeterSnapshotToDB: storing {} meters", snapshots.size());
+
+        for (Map.Entry<String, MeterSnapshot> entry : snapshots.entrySet()) {
+
+            MeterSnapshot meter = entry.getValue();
+
+            meterRepository.save(mapper.map(meter, MeterEntity.class));
         }
     }
 
