@@ -1,11 +1,16 @@
 package com.project.hems.simulator_service_testing.service;
 
+import com.project.hems.simulator_service_testing.domain.MeterEntity;
+import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.repository.MeterRepository;
+import com.project.hems.simulator_service_testing.web.exception.InvalidBatteryStatusException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import org.modelmapper.ModelMapper;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -22,74 +27,125 @@ public class MeterSimulationService {
     // Inject the Redis Template configured earlier
     private final RedisTemplate<String, MeterSnapshot> redisTemplate;
     private final MeterManagementService meterManagementService;
+    private final MeterRepository meterRepository;
+    private final ModelMapper mapper;
 
+    private static final double DELTA_SECONDS = 5.0;
+    private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
+
+    private void simulateVoltage(MeterSnapshot meter) {
+        double noise = (Math.random() * 10) - 5;
+        meter.setCurrentVoltage(230.0 + noise);
+    }
+
+    private void simulatePowerFluctuation(MeterSnapshot meter, double maxPower) {
+        if (Math.random() < 0.1) {
+            meter.setCurrentPower(Math.random() * maxPower);
+        }
+    }
+
+    @Scheduled(fixedRate = 300000)
+    public void saveMeterSnapshotToDB() {
+        log.debug("saveMeterSnapshotToDB: scheduler triggered");
+
+        Map<String, MeterSnapshot> snapshots = meterManagementService.getAllMeterSnapshot();
+
+        if (snapshots.isEmpty()) {
+            log.warn("saveMeterSnapshotToDB: Redis empty, returning back");
+            return;
+        }
+
+        log.info("saveMeterSnapshotToDB: storing {} meters", snapshots.size());
+
+        for (Map.Entry<String, MeterSnapshot> entry : snapshots.entrySet()) {
+
+            MeterSnapshot meter = entry.getValue();
+
+            meterRepository.save(mapper.map(meter, MeterEntity.class));
+        }
+    }
 
     @Scheduled(fixedRate = 5000)
     public void simulateLiveReadings() {
 
-        // Scheduler heartbeat — helps confirm the task is alive
         log.debug("simulateLiveReadings: scheduler triggered");
 
-        // Fetch ALL meter snapshots from Redis in one call (fast path)
-        log.debug("simulateLiveReadings: fetching all meter snapshots from Redis");
-        Map<String, MeterSnapshot> allMeterSnapshot = meterManagementService.getAllMeterSnapshot();
+        Map<String, MeterSnapshot> snapshots = meterManagementService.getAllMeterSnapshot();
 
-        // Fallback path: Redis cache miss
-        if (allMeterSnapshot.isEmpty()) {
-            log.warn("simulateLiveReadings: no meter data found in Redis, falling back to database");
+        if (snapshots.isEmpty()) {
+            log.warn("simulateLiveReadings: Redis empty, loading from DB");
             meterManagementService.getValuesFromDB();
-            return; // avoid simulating on empty data
+            return;
         }
 
-        log.info("simulateLiveReadings: simulating live readings for {} meters", allMeterSnapshot.size());
+        log.info("simulateLiveReadings: simulating {} meters", snapshots.size());
 
-        // Iterate over each meter snapshot and simulate real-time changes
-        for (Map.Entry<String, MeterSnapshot> entry : allMeterSnapshot.entrySet()) {
+        for (Map.Entry<String, MeterSnapshot> entry : snapshots.entrySet()) {
 
-            String userIdStr = entry.getKey();
+            String userId = entry.getKey();
             MeterSnapshot meter = entry.getValue();
 
-            log.debug("simulateLiveReadings: simulating data for meter [userId={}]", userIdStr);
-
-            // ---------------- SIMULATION LOGIC ----------------
-
-            // 1. Voltage fluctuation (±5V noise around 230V)
-            double noise = (Math.random() * 10) - 5;
-            double simulatedVoltage = 230.0 + noise;
-            meter.setCurrentVoltage(simulatedVoltage);
-
-            log.trace("Meter [{}]: voltage simulated as {} V", userIdStr, simulatedVoltage);
-
-            // 2. Random power fluctuation (10% chance of sudden change)
-            if (Math.random() < 0.1) {
-                double simulatedPower = Math.random() * 2000; // watts
-                meter.setCurrentPower(simulatedPower);
-
-                log.trace("Meter [{}]: power spike detected, new power = {} W",
-                        userIdStr, simulatedPower);
+            switch (meter.getChargingStatus()) {
+                case CHARGING -> simulateBatteryCharging(meter);
+                case DISCHARGING -> simulateBatteryDischarging(meter);
+                case CHARGED -> {
+                    log.trace("Meter [{}]: already charged", userId);
+                    continue;
+                }
+                default -> throw new InvalidBatteryStatusException(
+                        "Invalid battery status for meter " + meter.getMeterId());
             }
 
-            // 3. Energy accumulation (Wh → kWh conversion)
-            // Power (W) × time (1 second) → divide by 3,600,000 to get kWh
-            double kwhIncrement = (meter.getCurrentPower() * 1) / 3_600_000.0;
-            double updatedTotalEnergy = meter.getTotalEnergyKwh() + kwhIncrement;
-            meter.setTotalEnergyKwh(updatedTotalEnergy);
-
-            log.trace("Meter [{}]: energy incremented by {} kWh, total = {} kWh",
-                    userIdStr, kwhIncrement, updatedTotalEnergy);
-
-            // ---------------- WRITE BACK TO REDIS ----------------
-
-            // Redis does NOT auto-track object mutations like a Java Map
-            // Explicitly overwrite the value with a TTL to keep cache fresh
             redisTemplate.opsForValue()
-                    .set(userIdStr, meter, 10, TimeUnit.SECONDS);
+                    .set(userId, meter, 10, TimeUnit.SECONDS);
+        }
+    }
 
-            log.debug("simulateLiveReadings: updated meter snapshot saved to Redis [userId={}, ttl=10s]",
-                    userIdStr);
+    private void simulateBatteryCharging(MeterSnapshot meter) {
+
+        simulateVoltage(meter);
+        simulatePowerFluctuation(meter, 2000); // W
+
+        double powerW = meter.getCurrentPower();
+
+        // Energy added this tick
+        double energyAddedWh = powerW * DELTA_SECONDS * SECONDS_TO_HOURS;
+
+        double updatedWh = meter.getBatteryRemainingWh() + energyAddedWh;
+
+        if (updatedWh >= meter.getBatteryCapacityWh()) {
+            meter.setBatteryRemainingWh(meter.getBatteryCapacityWh());
+            meter.setChargingStatus(ChargingStatus.CHARGED);
+            meter.setCurrentPower(0.0);
+        } else {
+            meter.setBatteryRemainingWh(updatedWh);
         }
 
-        log.debug("simulateLiveReadings: simulation cycle completed");
+        // Grid-side energy (optional, but consistent)
+        meter.setTotalEnergyKwh(
+                meter.getTotalEnergyKwh() + (energyAddedWh / 1000.0));
+    }
+
+    private void simulateBatteryDischarging(MeterSnapshot meter) {
+
+        simulateVoltage(meter);
+        simulatePowerFluctuation(meter, 2000); // W
+
+        double powerW = meter.getCurrentPower();
+
+        double energyUsedWh = powerW * DELTA_SECONDS * SECONDS_TO_HOURS;
+
+        double updatedWh = meter.getBatteryRemainingWh() - energyUsedWh;
+
+        if (updatedWh <= 0) {
+            meter.setBatteryRemainingWh(0.0);
+            meter.setChargingStatus(ChargingStatus.CHARGING);
+        } else {
+            meter.setBatteryRemainingWh(updatedWh);
+        }
+
+        meter.setTotalEnergyKwh(
+                meter.getTotalEnergyKwh() + (energyUsedWh / 1000.0));
     }
 
 }

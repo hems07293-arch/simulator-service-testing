@@ -27,4 +27,14 @@ public class GlobalExceptionHandler {
                 .message(ex.getMessage())
                 .build();
     }
+
+    @ExceptionHandler(InvalidBatteryStatusException.class)
+    @ResponseStatus(code = HttpStatus.INTERNAL_SERVER_ERROR)
+    public CustomizedErrorResponse handleInvalidBatteryStatusException(InvalidBatteryStatusException ex) {
+        return CustomizedErrorResponse.builder()
+                .statusCode(HttpStatus.BAD_REQUEST.value())
+                .error("INVALID_BATTERY_STATUS")
+                .message(ex.getMessage())
+                .build();
+    }
 }

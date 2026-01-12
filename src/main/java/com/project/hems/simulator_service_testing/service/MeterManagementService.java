@@ -2,6 +2,7 @@ package com.project.hems.simulator_service_testing.service;
 
 import com.project.hems.simulator_service_testing.config.SimulationRedisProperties;
 import com.project.hems.simulator_service_testing.domain.MeterEntity;
+import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +29,7 @@ public class MeterManagementService {
     private final SimulationRedisProperties simulationRedisProperties;
 
     // 1. Create / Activate a meter (Persist to DB + Cache to Redis)
-    public void activateMeter(Long userId) {
+    public void activateMeter(Long userId, Double batteryCapacity) {
 
         // Entry log — helps trace meter lifecycle events
         log.info("activateMeter: activating meter for userId={}", userId);
@@ -39,6 +40,10 @@ public class MeterManagementService {
                 .totalEnergyKwh(0.0)
                 .currentVoltage(230.0)
                 .currentPower(0.0)
+                .batteryRemainingWh(0.0)
+                .batteryCapacityWh(batteryCapacity)
+                .chargingStatus(ChargingStatus.CHARGING)
+                .batterySoc(0)
                 .build();
 
         log.debug("activateMeter: initial meter snapshot created for userId={}", userId);
@@ -64,11 +69,7 @@ public class MeterManagementService {
         // Async persistence — does not block calling thread
         log.debug("saveNewEntityToDb: saving meter entity for userId={}", snapshot.getUserId());
 
-        MeterEntity meterEntity = new MeterEntity();
-        meterEntity.setUserId(snapshot.getUserId());
-        meterEntity.setLastKnownKwh(snapshot.getTotalEnergyKwh());
-
-        MeterEntity savedEntity = meterRepository.save(meterEntity);
+        MeterEntity savedEntity = meterRepository.save(mapper.map(snapshot, MeterEntity.class));
 
         log.debug("saveNewEntityToDb: meter entity saved successfully [meterId={}, userId={}]",
                 savedEntity.getId(), savedEntity.getUserId());
@@ -124,7 +125,8 @@ public class MeterManagementService {
         Set<String> keys = redisTemplate.keys(simulationRedisProperties.getREDIS_KEY() + "*");
 
         if (keys == null || keys.isEmpty()) {
-            log.warn("getAllMeterSnapshot: no Redis keys found with pattern={}", simulationRedisProperties.getREDIS_KEY());
+            log.warn("getAllMeterSnapshot: no Redis keys found with pattern={}",
+                    simulationRedisProperties.getREDIS_KEY());
             return Collections.emptyMap();
         }
 
@@ -174,8 +176,7 @@ public class MeterManagementService {
                             simulationRedisProperties.getREDIS_KEY() + meterEntity.getUserId().toString(),
                             snapshot,
                             10,
-                            TimeUnit.SECONDS
-                    );
+                            TimeUnit.SECONDS);
 
             log.trace("getValuesFromDB: cached meter snapshot for userId={} with TTL=10s",
                     meterEntity.getUserId());
