@@ -11,7 +11,9 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import org.modelmapper.ModelMapper;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 @Service
 @Setter
 @RequiredArgsConstructor
+@ConfigurationProperties(prefix = "property.config.kafka")
 public class MeterSimulationService {
 
     // Inject the Redis Template configured earlier
@@ -29,6 +32,9 @@ public class MeterSimulationService {
     private final MeterManagementService meterManagementService;
     private final MeterRepository meterRepository;
     private final ModelMapper mapper;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    private String topic;
 
     private static final double DELTA_SECONDS = 5.0;
     private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
@@ -95,6 +101,10 @@ public class MeterSimulationService {
                 default -> throw new InvalidBatteryStatusException(
                         "Invalid battery status for meter " + meter.getMeterId());
             }
+
+            log.debug("simulateLiveReadings: sending live data to kafka with topic = " + topic);
+            log.debug("simulateLiveReadings: sending live data to kafka with value = " + meter);
+            kafkaTemplate.send(topic, meter);
 
             redisTemplate.opsForValue()
                     .set(userId, meter, 10, TimeUnit.SECONDS);

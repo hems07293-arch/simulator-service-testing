@@ -26,13 +26,11 @@ public class RedisConfig {
         // Use Jackson to convert our MeterSnapshot object to JSON
         Jackson2JsonRedisSerializer<MeterSnapshot> serializer = new Jackson2JsonRedisSerializer<>(MeterSnapshot.class);
 
-        // Keys will be Strings (e.g., "SIMULATION_METERS")
+        // Keys will be Strings (e.g., "REDIS_KEY")
         template.setKeySerializer(new StringRedisSerializer());
-        template.setHashKeySerializer(new StringRedisSerializer());
 
         // Values will be JSON
         template.setValueSerializer(serializer);
-        template.setHashValueSerializer(serializer);
 
         return template;
     }
