@@ -50,7 +50,7 @@ public class MeterSimulationService {
         }
     }
 
-    @Scheduled(fixedRate = 300000)
+    // @Scheduled(fixedRate = 300000)
     public void saveMeterSnapshotToDB() {
         log.debug("saveMeterSnapshotToDB: scheduler triggered");
 
@@ -71,7 +71,7 @@ public class MeterSimulationService {
         }
     }
 
-    @Scheduled(fixedRate = 5000)
+    // @Scheduled(fixedRate = 5000)
     public void simulateLiveReadings() {
 
         log.debug("simulateLiveReadings: scheduler triggered");
