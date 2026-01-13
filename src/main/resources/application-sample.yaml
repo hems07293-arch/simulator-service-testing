@@ -38,5 +38,6 @@ simulation-redis:
 property:
   config:
     kafka: 
-      topic: BATTERY_STATS
-      bootstrap_servers: localhost:9092
+      raw-energy-topic: RAW_ENERGY_READINGS
+      partition-count: 3
+      replica-count: 1

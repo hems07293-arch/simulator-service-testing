@@ -12,13 +12,15 @@ import lombok.Setter;
 @Setter
 public class KafkaConfig {
 
-    private String topic;
+    private String rawEnergyTopic;
+    private Integer partitionCount;
+    private Integer replicaCount;
 
     @Bean
-    public NewTopic getTopic() {
-        return TopicBuilder.name(topic)
-                .partitions(10)
-                .replicas(1)
+    public NewTopic rawEnergyReadings() {
+        return TopicBuilder.name(rawEnergyTopic)
+                .partitions(partitionCount)
+                .replicas(replicaCount)
                 .build();
     }
 

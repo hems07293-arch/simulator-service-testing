@@ -34,7 +34,7 @@ public class MeterSimulationService {
     private final ModelMapper mapper;
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    private String topic;
+    private String rawEnergyTopic;
 
     private static final double DELTA_SECONDS = 5.0;
     private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
@@ -102,9 +102,9 @@ public class MeterSimulationService {
                         "Invalid battery status for meter " + meter.getMeterId());
             }
 
-            log.debug("simulateLiveReadings: sending live data to kafka with topic = " + topic);
+            log.debug("simulateLiveReadings: sending live data to kafka with topic = " + rawEnergyTopic);
             log.debug("simulateLiveReadings: sending live data to kafka with value = " + meter);
-            kafkaTemplate.send(topic, meter);
+            kafkaTemplate.send(rawEnergyTopic, meter);
 
             redisTemplate.opsForValue()
                     .set(userId, meter, 10, TimeUnit.SECONDS);
