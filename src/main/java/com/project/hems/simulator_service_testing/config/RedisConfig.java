@@ -8,6 +8,9 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 
 @Configuration
@@ -19,19 +22,23 @@ public class RedisConfig {
     }
 
     @Bean
-    public RedisTemplate<String, MeterSnapshot> redisTemplate(RedisConnectionFactory connectionFactory) {
+    public RedisTemplate<String, MeterSnapshot> redisTemplate(
+            RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, MeterSnapshot> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
-        // Use Jackson to convert our MeterSnapshot object to JSON
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
         Jackson2JsonRedisSerializer<MeterSnapshot> serializer = new Jackson2JsonRedisSerializer<>(MeterSnapshot.class);
+        serializer.setObjectMapper(objectMapper);
 
-        // Keys will be Strings (e.g., "REDIS_KEY")
         template.setKeySerializer(new StringRedisSerializer());
-
-        // Values will be JSON
         template.setValueSerializer(serializer);
 
+        template.afterPropertiesSet();
         return template;
     }
+
 }

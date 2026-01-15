@@ -1,11 +1,8 @@
 package com.project.hems.simulator_service_testing.service;
 
 import com.project.hems.simulator_service_testing.domain.MeterEntity;
-import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
-import com.project.hems.simulator_service_testing.web.exception.InvalidBatteryStatusException;
-
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +14,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -33,24 +31,12 @@ public class MeterSimulationService {
     private final MeterRepository meterRepository;
     private final ModelMapper mapper;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final EnergyPhysicsEngine energyPhysicsEngine;
+    private final EnvironmentSimulator environmentSimulator;
 
     private String rawEnergyTopic;
 
-    private static final double DELTA_SECONDS = 5.0;
-    private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
-
-    private void simulateVoltage(MeterSnapshot meter) {
-        double noise = (Math.random() * 10) - 5;
-        meter.setCurrentVoltage(230.0 + noise);
-    }
-
-    private void simulatePowerFluctuation(MeterSnapshot meter, double maxPower) {
-        if (Math.random() < 0.1) {
-            meter.setCurrentPower(Math.random() * maxPower);
-        }
-    }
-
-    // @Scheduled(fixedRate = 300000)
+    @Scheduled(fixedRate = 300000)
     public void saveMeterSnapshotToDB() {
         log.debug("saveMeterSnapshotToDB: scheduler triggered");
 
@@ -71,7 +57,7 @@ public class MeterSimulationService {
         }
     }
 
-    // @Scheduled(fixedRate = 5000)
+    @Scheduled(fixedRate = 5000)
     public void simulateLiveReadings() {
 
         log.debug("simulateLiveReadings: scheduler triggered");
@@ -91,19 +77,19 @@ public class MeterSimulationService {
             String userId = entry.getKey();
             MeterSnapshot meter = entry.getValue();
 
-            switch (meter.getChargingStatus()) {
-                case CHARGING -> simulateBatteryCharging(meter);
-                case DISCHARGING -> simulateBatteryDischarging(meter);
-                case CHARGED -> {
-                    log.trace("Meter [{}]: already charged", userId);
-                    continue;
-                }
-                default -> throw new InvalidBatteryStatusException(
-                        "Invalid battery status for meter " + meter.getMeterId());
-            }
+            // 1. Environmental Inputs
+            double solarW = environmentSimulator.calculateSolarProduction();
+            double loadW = environmentSimulator.calculateHomeConsumption();
+
+            // 2. Physics Engine (Priority Logic)
+            energyPhysicsEngine.processEnergyBalance(meter, solarW, loadW);
+
+            // 3. Electrical Noise (Voltage/Amps for realism)
+            applyElectricalMetadata(meter);
 
             log.debug("simulateLiveReadings: sending live data to kafka with topic = " + rawEnergyTopic);
             log.debug("simulateLiveReadings: sending live data to kafka with value = " + meter);
+            meter.setTimestamp(LocalDateTime.now());
             kafkaTemplate.send(rawEnergyTopic, meter);
 
             redisTemplate.opsForValue()
@@ -111,51 +97,13 @@ public class MeterSimulationService {
         }
     }
 
-    private void simulateBatteryCharging(MeterSnapshot meter) {
+    private void applyElectricalMetadata(MeterSnapshot meter) {
+        // Simulating standard grid voltage fluctuations
+        double voltage = 230.0 + (Math.random() * 4 - 2);
+        meter.setCurrentVoltage(voltage);
 
-        simulateVoltage(meter);
-        simulatePowerFluctuation(meter, 2000); // W
-
-        double powerW = meter.getCurrentPower();
-
-        // Energy added this tick
-        double energyAddedWh = powerW * DELTA_SECONDS * SECONDS_TO_HOURS;
-
-        double updatedWh = meter.getBatteryRemainingWh() + energyAddedWh;
-
-        if (updatedWh >= meter.getBatteryCapacityWh()) {
-            meter.setBatteryRemainingWh(meter.getBatteryCapacityWh());
-            meter.setChargingStatus(ChargingStatus.CHARGED);
-            meter.setCurrentPower(0.0);
-        } else {
-            meter.setBatteryRemainingWh(updatedWh);
-        }
-
-        // Grid-side energy (optional, but consistent)
-        meter.setTotalEnergyKwh(
-                meter.getTotalEnergyKwh() + (energyAddedWh / 1000.0));
-    }
-
-    private void simulateBatteryDischarging(MeterSnapshot meter) {
-
-        simulateVoltage(meter);
-        simulatePowerFluctuation(meter, 2000); // W
-
-        double powerW = meter.getCurrentPower();
-
-        double energyUsedWh = powerW * DELTA_SECONDS * SECONDS_TO_HOURS;
-
-        double updatedWh = meter.getBatteryRemainingWh() - energyUsedWh;
-
-        if (updatedWh <= 0) {
-            meter.setBatteryRemainingWh(0.0);
-            meter.setChargingStatus(ChargingStatus.CHARGING);
-        } else {
-            meter.setBatteryRemainingWh(updatedWh);
-        }
-
-        meter.setTotalEnergyKwh(
-                meter.getTotalEnergyKwh() + (energyUsedWh / 1000.0));
+        // Amps = Power / Voltage (Net current at the meter)
+        meter.setCurrentAmps(Math.abs(meter.getGridPowerW()) / voltage);
     }
 
 }

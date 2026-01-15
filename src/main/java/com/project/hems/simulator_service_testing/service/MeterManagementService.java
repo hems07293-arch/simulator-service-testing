@@ -2,19 +2,21 @@ package com.project.hems.simulator_service_testing.service;
 
 import com.project.hems.simulator_service_testing.config.SimulationRedisProperties;
 import com.project.hems.simulator_service_testing.domain.MeterEntity;
+import com.project.hems.simulator_service_testing.model.BatteryMode;
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
 
 import jakarta.annotation.Nullable;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -30,6 +32,7 @@ public class MeterManagementService {
     private final SimulationRedisProperties simulationRedisProperties;
 
     // 1. Create / Activate a meter (Persist to DB + Cache to Redis)
+    @Transactional
     public void activateMeter(Long userId, Double batteryCapacity) {
 
         // Entry log — helps trace meter lifecycle events
@@ -37,14 +40,30 @@ public class MeterManagementService {
 
         // Create an initial snapshot with default electrical values
         MeterSnapshot snapshot = MeterSnapshot.builder()
-                .userId(userId)
-                .totalEnergyKwh(0.0)
+                .siteId(userId)
+                .timestamp(LocalDateTime.now())
+                // Physical Hardware Limits
+                .batteryCapacityWh(batteryCapacity) // 10 kWh
+                .batteryRemainingWh(5000.0) // Start half-full
+
+                // Initial Logic States
+                .batteryMode(BatteryMode.AUTO)
+                .chargingStatus(ChargingStatus.IDLE)
+
+                // Real-time Power (Start at 0, let simulation take over)
+                .solarProductionW(0.0)
+                .homeConsumptionW(0.0)
+                .batteryPowerW(0.0)
+                .gridPowerW(0.0)
+
+                // Cumulative Counters (Start at 0)
+                .totalSolarYieldKwh(0.0)
+                .totalGridImportKwh(0.0)
+                .totalGridExportKwh(0.0)
+                .totalHomeUsageKwh(0.0)
+
                 .currentVoltage(230.0)
-                .currentPower(0.0)
-                .batteryRemainingWh(0.0)
-                .batteryCapacityWh(batteryCapacity)
-                .chargingStatus(ChargingStatus.CHARGING)
-                .batterySoc(0)
+                .currentAmps(0.0)
                 .build();
 
         log.debug("activateMeter: initial meter snapshot created for userId={}", userId);
@@ -64,16 +83,15 @@ public class MeterManagementService {
         log.info("activateMeter: meter snapshot cached in Redis for userId={} with TTL=10s", userId);
     }
 
-    @Async
     private MeterEntity saveNewEntityToDb(MeterSnapshot snapshot) {
 
         // Async persistence — does not block calling thread
-        log.debug("saveNewEntityToDb: saving meter entity for userId={}", snapshot.getUserId());
+        log.debug("saveNewEntityToDb: saving meter entity for userId={}", snapshot.getSiteId());
 
         MeterEntity savedEntity = meterRepository.save(mapper.map(snapshot, MeterEntity.class));
 
         log.debug("saveNewEntityToDb: meter entity saved successfully [meterId={}, userId={}]",
-                savedEntity.getId(), savedEntity.getUserId());
+                savedEntity.getId(), savedEntity.getSiteId());
 
         return savedEntity;
     }
@@ -174,13 +192,13 @@ public class MeterManagementService {
 
             redisTemplate.opsForValue()
                     .set(
-                            simulationRedisProperties.getREDIS_KEY() + meterEntity.getUserId().toString(),
+                            simulationRedisProperties.getREDIS_KEY() + meterEntity.getSiteId().toString(),
                             snapshot,
                             10,
                             TimeUnit.SECONDS);
 
             log.trace("getValuesFromDB: cached meter snapshot for userId={} with TTL=10s",
-                    meterEntity.getUserId());
+                    meterEntity.getSiteId());
         });
 
         log.info("getValuesFromDB: Redis cache successfully repopulated from database");

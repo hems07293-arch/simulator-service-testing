@@ -82,7 +82,7 @@ public class MeterPowerFlowService {
                 meterSnapshot.getChargingStatus());
 
         // Update battery flow direction
-        meterSnapshot.setChargingStatus(ChargingStatus.DISCHARGING);
+        meterSnapshot.setChargingStatus(ChargingStatus.CHARGING);
 
         // Persist updated snapshot back to Redis
         redisTemplate.opsForValue().set(redisKey, meterSnapshot);

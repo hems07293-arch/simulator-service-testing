@@ -1,5 +1,9 @@
 package com.project.hems.simulator_service_testing.model;
 
 public enum ChargingStatus {
-    CHARGING, DISCHARGING, CHARGED
+    FULL,
+    CHARGING, // Solar/Grid -> Battery
+    DISCHARGING, // Battery -> Home/Grid
+    IDLE, // Battery full or disconnected
+    EMPTY // SoC at 0%
 }

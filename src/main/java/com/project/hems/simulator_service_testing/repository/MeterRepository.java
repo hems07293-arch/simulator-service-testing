@@ -6,5 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 public interface MeterRepository extends JpaRepository<MeterEntity, Long> {
-    Optional<MeterEntity> findByUserId(Long userId);
+    Optional<MeterEntity> findBySiteId(Long siteId);
 }

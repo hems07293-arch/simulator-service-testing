@@ -3,6 +3,8 @@ package com.project.hems.simulator_service_testing.config;
 import java.util.Collection;
 
 import com.project.hems.simulator_service_testing.service.MeterManagementService;
+
+import org.modelmapper.ModelMapper;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -20,56 +22,60 @@ import lombok.extern.slf4j.Slf4j;
 public class SimulationShutdownListener {
 
     private final MeterRepository meterRepository;
+    private final ModelMapper mapper;
     private final MeterManagementService meterManagementService;
 
     @EventListener(ContextClosedEvent.class)
     public void onShutdown() {
+        log.warn("onShutdown: Application context closing. Syncing high-fidelity state to Cold Storage...");
 
-        // Application shutdown hook — last chance to persist in-memory / cached state
-        log.warn("onShutdown: application context closing, persisting meter state from Redis to DB");
+        // 1. Get all "Hot" data from Redis
+        Collection<MeterSnapshot> allSnapshots = meterManagementService.getAllMeters();
 
-        // Fetch all currently cached meter snapshots
-        Collection<MeterSnapshot> allMeters = meterManagementService.getAllMeters();
-
-        log.info("onShutdown: {} meter snapshots retrieved from Redis for persistence",
-                allMeters.size());
-
-        // Iterate through each snapshot and sync state to the database
-        for (MeterSnapshot meter : allMeters) {
-
-            log.debug("onShutdown: persisting meter state for userId={}", meter.getUserId());
-
-            meterRepository.findByUserId(meter.getUserId())
-                    .ifPresentOrElse(entity -> {
-
-                        // Existing meter found — update last known energy value
-                        entity.setLastKnownEnergyKwh(meter.getTotalEnergyKwh());
-                        entity.setBatteryRemainingWh(meter.getBatteryRemainingWh());
-                        entity.setBatterySoc(meter.getBatterySoc());
-                        meterRepository.save(entity);
-
-                        log.trace("onShutdown: updated existing meter [userId={}, lastKnownKwh={}]",
-                                meter.getUserId(), meter.getTotalEnergyKwh());
-
-                    }, () -> {
-
-                        // No existing meter — create a new DB record as a safety fallback
-                        MeterEntity meterEntity = new MeterEntity();
-                        meterEntity.setUserId(meter.getUserId());
-                        meterEntity.setLastKnownEnergyKwh(meter.getTotalEnergyKwh());
-                        meterEntity.setBatteryRemainingWh(meter.getBatteryRemainingWh());
-                        meterEntity.setBatteryCapacityWh(meter.getBatteryCapacityWh());
-                        meterEntity.setBatterySoc(0);
-
-                        meterRepository.save(meterEntity);
-
-                        log.trace("onShutdown: created new meter entity [userId={}, lastKnownKwh={}]",
-                                meter.getUserId(), meter.getTotalEnergyKwh());
-                    });
+        if (allSnapshots.isEmpty()) {
+            log.info("onShutdown: No active snapshots in Redis to persist.");
+            return;
         }
 
-        // Final confirmation — critical for graceful shutdown diagnostics
-        log.info("onShutdown: meter state persistence completed successfully");
+        log.info("onShutdown: Syncing {} meters to PostgreSQL", allSnapshots.size());
+
+        for (MeterSnapshot snapshot : allSnapshots) {
+            try {
+                meterRepository.findBySiteId(snapshot.getSiteId())
+                        .ifPresentOrElse(entity -> {
+                            // Update existing record using the new mapping logic
+                            updateEntityFromSnapshot(entity, snapshot);
+                            meterRepository.save(entity);
+                            log.debug("onShutdown: Updated Meter ID {}", entity.getId());
+                        }, () -> {
+                            // Fallback: Create new record if user doesn't exist in DB
+                            MeterEntity newEntity = mapper.map(snapshot, MeterEntity.class);
+                            meterRepository.save(newEntity);
+                            log.debug("onShutdown: Created new record for User ID {}", snapshot.getSiteId());
+                        });
+            } catch (Exception e) {
+                log.error("onShutdown: Failed to persist meter for user {}: {}", snapshot.getSiteId(), e.getMessage());
+            }
+        }
+
+        log.info("onShutdown: Persistence completed successfully.");
+    }
+
+    /**
+     * Helper to update only the fields that change during simulation.
+     * This ensures we don't accidentally overwrite static metadata.
+     */
+    private void updateEntityFromSnapshot(MeterEntity entity, MeterSnapshot snapshot) {
+        // Accumulators (The "Odometer" readings)
+        entity.setTotalSolarYieldKwh(snapshot.getTotalSolarYieldKwh());
+        entity.setTotalGridImportKwh(snapshot.getTotalGridImportKwh());
+        entity.setTotalGridExportKwh(snapshot.getTotalGridExportKwh());
+        entity.setTotalHomeUsageKwh(snapshot.getTotalHomeUsageKwh());
+
+        // Battery State
+        entity.setBatteryRemainingWh(snapshot.getBatteryRemainingWh());
+        entity.setBatterySoc(snapshot.getSoc()); // Uses the helper in your POJO
+        entity.setChargingStatus(snapshot.getChargingStatus());
     }
 
 }

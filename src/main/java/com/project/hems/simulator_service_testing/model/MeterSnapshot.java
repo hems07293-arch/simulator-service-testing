@@ -1,5 +1,8 @@
 package com.project.hems.simulator_service_testing.model;
 
+import java.io.Serializable;
+import java.time.LocalDateTime;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import lombok.AllArgsConstructor;
@@ -14,34 +17,42 @@ import lombok.ToString;
 @AllArgsConstructor
 @Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class MeterSnapshot {
+public class MeterSnapshot implements Serializable {
 
     private Long meterId;
-    private Long userId;
+    private Long siteId;
+    private LocalDateTime timestamp;
 
-    @Builder.Default
-    private Double currentVoltage = 230.0; // volts
+    // --- 1. Real-Time Power Flow (Watts) ---
+    private Double solarProductionW; // Logic-driven (Sine wave)
+    private Double homeConsumptionW; // Logic-driven (Base + Spikes)
+    private Double batteryPowerW; // (+) Charging, (-) Discharging
+    private Double gridPowerW; // (+) Exporting, (-) Importing
 
-    @Builder.Default
-    private Double currentPower = 0.0; // watts (+ charge, - discharge)
+    // --- 2. Energy Accumulators (kWh) ---
+    // Persistent values for the "Cold Storage" DB
+    private Double totalSolarYieldKwh;
+    private Double totalGridImportKwh;
+    private Double totalGridExportKwh;
+    private Double totalHomeUsageKwh;
 
-    private Double totalEnergyKwh; // cumulative meter energy (grid side)
-
+    // --- 3. Battery State ---
+    private Double batteryCapacityWh;
+    private Double batteryRemainingWh;
     private ChargingStatus chargingStatus;
+    private BatteryMode batteryMode; // Critical for VPP Logic
 
-    // Battery (energy-based)
-    private Double batteryCapacityWh; // max energy
-    private Double batteryRemainingWh; // current energy
+    // --- 4. Electrical Metadata ---
+    private Double currentVoltage; // Fixes the "undefined" error
+    private Double currentAmps;
 
-    private Integer batterySoc;
-
-    /** Derived, never persisted */
-    public Integer getBatterySoc() {
-        if (batteryCapacityWh == null || batteryCapacityWh == 0) {
+    /**
+     * * Derived State of Charge
+     * Calculated every time the frontend or HEMS requests the object
+     */
+    public Integer getSoc() {
+        if (batteryCapacityWh == null || batteryCapacityWh <= 0)
             return 0;
-        }
-        this.batterySoc = (int) Math.round(
-                (batteryRemainingWh / batteryCapacityWh) * 100);
-        return batterySoc;
+        return (int) Math.round((batteryRemainingWh / batteryCapacityWh) * 100);
     }
 }
