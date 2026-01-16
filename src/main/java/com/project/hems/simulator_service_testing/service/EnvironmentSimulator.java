@@ -2,42 +2,78 @@ package com.project.hems.simulator_service_testing.service;
 
 import org.springframework.stereotype.Component;
 
+import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Component
 public class EnvironmentSimulator {
 
     public double calculateSolarProduction() {
+        log.debug("calculateSolarProduction: start calculating solar production");
+
         int hour = java.time.LocalTime.now().getHour();
+        log.debug("calculateSolarProduction: current hour = {}", hour);
 
         // Simple window: 6 AM to 6 PM (18:00)
         if (hour < 6 || hour >= 18) {
-            return 0.0; // It's night
+            log.debug("calculateSolarProduction: night time detected, solar production = 0.0");
+            return 0.0;
         }
 
-        // Bell curve: Peaks at noon (12)
-        // Formula: MaxPower * sin(pi * (t - 6) / 12)
         double maxPeakW = 5000.0; // 5kW system
         double radians = Math.PI * (hour - 6) / 12.0;
+        double solarProduction = maxPeakW * Math.sin(radians);
 
-        return maxPeakW * Math.sin(radians);
+        log.debug(
+                "calculateSolarProduction: calculated solarProductionW = {} using maxPeakW = {}",
+                solarProduction,
+                maxPeakW);
+
+        return solarProduction;
     }
 
     public double calculateHomeConsumption() {
-        // 1. Base Load: Things that are always on (300W - 500W)
+        log.debug("calculateHomeConsumption: start calculating home consumption");
+
         double baseLoad = 400.0;
+        log.debug("calculateHomeConsumption: baseLoadW = {}", baseLoad);
 
-        // 2. Random Noise: Small fluctuations (+/- 50W)
         double noise = (Math.random() * 100) - 50;
+        log.debug("calculateHomeConsumption: noiseW = {}", noise);
 
-        // 3. High-Power Spikes: 10% chance a heavy appliance is running (2000W - 4000W)
         double spike = 0.0;
         if (Math.random() < 0.10) {
             spike = 2000.0 + (Math.random() * 2000.0);
+            log.info("calculateHomeConsumption: high power spike detected, spikeW = {}", spike);
         }
 
         double totalLoad = baseLoad + noise + spike;
+        double finalLoad = Math.max(totalLoad, 100.0);
 
-        // Ensure we never return a negative consumption
-        return Math.max(totalLoad, 100.0);
+        log.debug(
+                "calculateHomeConsumption: totalLoadW = {}, finalConsumptionW = {}",
+                totalLoad,
+                finalLoad);
+
+        return finalLoad;
     }
 
+    public void applyElectricalMetadata(MeterSnapshot meter) {
+        log.debug("applyElectricalMetadata: applying electrical metadata to meter");
+
+        double voltage = 230.0 + (Math.random() * 4 - 2);
+        meter.setCurrentVoltage(voltage);
+
+        log.debug("applyElectricalMetadata: calculated voltage = {}", voltage);
+
+        double currentAmps = Math.abs(meter.getGridPowerW()) / voltage;
+        meter.setCurrentAmps(currentAmps);
+
+        log.debug(
+                "applyElectricalMetadata: gridPowerW = {}, calculated currentAmps = {}",
+                meter.getGridPowerW(),
+                currentAmps);
+    }
 }

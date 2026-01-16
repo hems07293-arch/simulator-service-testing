@@ -85,7 +85,7 @@ public class MeterSimulationService {
             energyPhysicsEngine.processEnergyBalance(meter, solarW, loadW);
 
             // 3. Electrical Noise (Voltage/Amps for realism)
-            applyElectricalMetadata(meter);
+            environmentSimulator.applyElectricalMetadata(meter);
 
             log.debug("simulateLiveReadings: sending live data to kafka with topic = " + rawEnergyTopic);
             log.debug("simulateLiveReadings: sending live data to kafka with value = " + meter);
@@ -95,15 +95,6 @@ public class MeterSimulationService {
             redisTemplate.opsForValue()
                     .set(userId, meter, 10, TimeUnit.SECONDS);
         }
-    }
-
-    private void applyElectricalMetadata(MeterSnapshot meter) {
-        // Simulating standard grid voltage fluctuations
-        double voltage = 230.0 + (Math.random() * 4 - 2);
-        meter.setCurrentVoltage(voltage);
-
-        // Amps = Power / Voltage (Net current at the meter)
-        meter.setCurrentAmps(Math.abs(meter.getGridPowerW()) / voltage);
     }
 
 }

@@ -5,6 +5,9 @@ import org.springframework.stereotype.Component;
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Component
 public class EnergyPhysicsEngine {
 
@@ -12,24 +15,40 @@ public class EnergyPhysicsEngine {
     private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
 
     public void processEnergyBalance(MeterSnapshot meter, double solarW, double loadW) {
+        log.debug("processEnergyBalance: start energy balance calculation");
+
         double netPowerW = solarW - loadW;
         double batteryFlowW = 0.0;
 
+        log.debug(
+                "processEnergyBalance: solarW = {}, loadW = {}, netPowerW = {}",
+                solarW, loadW, netPowerW);
+
         if (netPowerW > 0) {
-            // Surplus logic
             double maxChargePossibleW = Math.min(netPowerW, 3000.0);
+            log.debug(
+                    "processEnergyBalance: surplus detected, maxChargePossibleW = {}",
+                    maxChargePossibleW);
             batteryFlowW = calculateBatteryCharge(meter, maxChargePossibleW);
+
         } else if (netPowerW < 0) {
-            // Deficit logic
             double deficitW = Math.abs(netPowerW);
             double maxDischargePossibleW = Math.min(deficitW, 3000.0);
+            log.debug(
+                    "processEnergyBalance: deficit detected, maxDischargePossibleW = {}",
+                    maxDischargePossibleW);
             batteryFlowW = -calculateBatteryDischarge(meter, maxDischargePossibleW);
+
         } else {
+            log.debug("processEnergyBalance: perfect balance, battery idle");
             meter.setChargingStatus(ChargingStatus.IDLE);
         }
 
-        // Grid Balance Calculation
         double gridW = (solarW - loadW) - batteryFlowW;
+
+        log.debug(
+                "processEnergyBalance: batteryFlowW = {}, gridW = {}",
+                batteryFlowW, gridW);
 
         meter.setSolarProductionW(solarW);
         meter.setHomeConsumptionW(loadW);
@@ -40,60 +59,81 @@ public class EnergyPhysicsEngine {
     }
 
     public void updateEnergyAccumulators(MeterSnapshot meter, double solarW, double loadW, double gridW) {
-        // Convert Watts to kWh for this 5-second tick
-        // (W * seconds) / (3600 seconds/hour * 1000 W/kW)
+        log.debug("updateEnergyAccumulators: updating cumulative energy values");
+
         double conversionFactor = DELTA_SECONDS / (3600.0 * 1000.0);
 
-        // 1. Accumulate Solar Yield
-        meter.setTotalSolarYieldKwh(meter.getTotalSolarYieldKwh() + (solarW * conversionFactor));
+        meter.setTotalSolarYieldKwh(
+                meter.getTotalSolarYieldKwh() + (solarW * conversionFactor));
 
-        // 2. Accumulate Home Usage
-        meter.setTotalHomeUsageKwh(meter.getTotalHomeUsageKwh() + (loadW * conversionFactor));
+        meter.setTotalHomeUsageKwh(
+                meter.getTotalHomeUsageKwh() + (loadW * conversionFactor));
 
-        // 3. Accumulate Grid Import/Export
         if (gridW > 0) {
-            // We are exporting (Selling to grid)
-            meter.setTotalGridExportKwh(meter.getTotalGridExportKwh() + (gridW * conversionFactor));
+            meter.setTotalGridExportKwh(
+                    meter.getTotalGridExportKwh() + (gridW * conversionFactor));
+            log.debug("updateEnergyAccumulators: grid export accumulated");
+
         } else if (gridW < 0) {
-            // We are importing (Buying from grid)
-            meter.setTotalGridImportKwh(meter.getTotalGridImportKwh() + (Math.abs(gridW) * conversionFactor));
+            meter.setTotalGridImportKwh(
+                    meter.getTotalGridImportKwh() + (Math.abs(gridW) * conversionFactor));
+            log.debug("updateEnergyAccumulators: grid import accumulated");
         }
     }
 
     public double calculateBatteryCharge(MeterSnapshot meter, double chargeW) {
+        log.debug(
+                "calculateBatteryCharge: requested chargeW = {}, batteryRemainingWh = {}",
+                chargeW, meter.getBatteryRemainingWh());
+
         double energyToAddWh = chargeW * DELTA_SECONDS * SECONDS_TO_HOURS;
         double newWh = meter.getBatteryRemainingWh() + energyToAddWh;
 
         if (newWh >= meter.getBatteryCapacityWh()) {
             double actualAddedWh = meter.getBatteryCapacityWh() - meter.getBatteryRemainingWh();
+
             meter.setBatteryRemainingWh(meter.getBatteryCapacityWh());
             meter.setChargingStatus(ChargingStatus.FULL);
-            return (actualAddedWh / (DELTA_SECONDS * SECONDS_TO_HOURS)); // Actual W used
+
+            log.info("calculateBatteryCharge: battery reached FULL state");
+
+            return actualAddedWh / (DELTA_SECONDS * SECONDS_TO_HOURS);
         } else {
             meter.setBatteryRemainingWh(newWh);
             meter.setChargingStatus(ChargingStatus.CHARGING);
+
+            log.debug(
+                    "calculateBatteryCharge: charging, newBatteryWh = {}",
+                    newWh);
+
             return chargeW;
         }
     }
 
     public double calculateBatteryDischarge(MeterSnapshot meter, double requestedW) {
-        // Convert the requested Power (W) to Energy (Wh) for this time slice
+        log.debug(
+                "calculateBatteryDischarge: requestedW = {}, batteryRemainingWh = {}",
+                requestedW, meter.getBatteryRemainingWh());
+
         double energyNeededWh = requestedW * DELTA_SECONDS * SECONDS_TO_HOURS;
 
-        // Check if battery has enough energy
         if (meter.getBatteryRemainingWh() >= energyNeededWh) {
-            // Normal Case: Battery handles the full request
-            meter.setBatteryRemainingWh(meter.getBatteryRemainingWh() - energyNeededWh);
+            meter.setBatteryRemainingWh(
+                    meter.getBatteryRemainingWh() - energyNeededWh);
             meter.setChargingStatus(ChargingStatus.DISCHARGING);
+
+            log.debug("calculateBatteryDischarge: normal discharge");
+
             return requestedW;
         } else {
-            // Corner Case: Battery is almost empty, take what's left
             double actualProvidedWh = meter.getBatteryRemainingWh();
+
             meter.setBatteryRemainingWh(0.0);
             meter.setChargingStatus(ChargingStatus.EMPTY);
 
-            // Convert the actual Wh pulled back into Watts (W) to maintain balance
-            return (actualProvidedWh / (DELTA_SECONDS * SECONDS_TO_HOURS));
+            log.info("calculateBatteryDischarge: battery EMPTY");
+
+            return actualProvidedWh / (DELTA_SECONDS * SECONDS_TO_HOURS);
         }
     }
 }
