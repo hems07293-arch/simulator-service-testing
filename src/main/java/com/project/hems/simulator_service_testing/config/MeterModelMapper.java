@@ -40,6 +40,7 @@ public class MeterModelMapper {
                             .batteryRemainingWh(source.getBatteryRemainingWh())
                             // Default Mode on Load
                             .batteryMode(BatteryMode.AUTO)
+                            .batterySoc(source.getBatterySoc())
                             .timestamp(source.getLastUpdatedAt().toLocalDateTime())
                             .build();
                 });
@@ -65,7 +66,7 @@ public class MeterModelMapper {
                     entity.setChargingStatus(source.getChargingStatus());
                     entity.setBatteryCapacityWh(source.getBatteryCapacityWh());
                     entity.setBatteryRemainingWh(source.getBatteryRemainingWh());
-                    entity.setBatterySoc(source.getSoc()); // Calculated helper in POJO
+                    entity.setBatterySoc(source.getBatterySoc()); // Calculated helper in POJO
 
                     return entity;
                 });

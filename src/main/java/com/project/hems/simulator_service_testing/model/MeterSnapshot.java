@@ -45,14 +45,5 @@ public class MeterSnapshot implements Serializable {
     // --- 4. Electrical Metadata ---
     private Double currentVoltage; // Fixes the "undefined" error
     private Double currentAmps;
-
-    /**
-     * * Derived State of Charge
-     * Calculated every time the frontend or HEMS requests the object
-     */
-    public Integer getSoc() {
-        if (batteryCapacityWh == null || batteryCapacityWh <= 0)
-            return 0;
-        return (int) Math.round((batteryRemainingWh / batteryCapacityWh) * 100);
-    }
+    private Integer batterySoc;
 }

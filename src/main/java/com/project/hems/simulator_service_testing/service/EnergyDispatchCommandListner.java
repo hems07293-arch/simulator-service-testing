@@ -3,7 +3,7 @@ package com.project.hems.simulator_service_testing.service;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
-import com.project.hems.simulator_service_testing.model.EnergyDispatchCommand;
+import com.project.hems.simulator_service_testing.model.envoy.EnergyDispatchCommand;
 
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;

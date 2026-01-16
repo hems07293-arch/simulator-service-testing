@@ -1,4 +1,4 @@
-package com.project.hems.simulator_service_testing.model;
+package com.project.hems.simulator_service_testing.model.envoy;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 

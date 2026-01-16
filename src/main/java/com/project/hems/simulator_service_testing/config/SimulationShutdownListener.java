@@ -74,7 +74,7 @@ public class SimulationShutdownListener {
 
         // Battery State
         entity.setBatteryRemainingWh(snapshot.getBatteryRemainingWh());
-        entity.setBatterySoc(snapshot.getSoc()); // Uses the helper in your POJO
+        entity.setBatterySoc(snapshot.getBatterySoc()); // Uses the helper in your POJO
         entity.setChargingStatus(snapshot.getChargingStatus());
     }
 

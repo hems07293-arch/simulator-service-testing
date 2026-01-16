@@ -68,7 +68,8 @@ public class EnvironmentSimulator {
 
         log.debug("applyElectricalMetadata: calculated voltage = {}", voltage);
 
-        double currentAmps = Math.abs(meter.getGridPowerW()) / voltage;
+        double totalPowerW = Math.abs(meter.getHomeConsumptionW());
+        double currentAmps = totalPowerW / voltage;
         meter.setCurrentAmps(currentAmps);
 
         log.debug(

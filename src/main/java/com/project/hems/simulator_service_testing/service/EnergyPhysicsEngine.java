@@ -15,47 +15,86 @@ public class EnergyPhysicsEngine {
     private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
 
     public void processEnergyBalance(MeterSnapshot meter, double solarW, double loadW) {
-        log.debug("processEnergyBalance: start energy balance calculation");
+        log.debug(
+                "processEnergyBalance: start | solarW = {}, loadW = {}",
+                solarW,
+                loadW);
 
-        double netPowerW = solarW - loadW;
+        double remainingLoadW = loadW;
         double batteryFlowW = 0.0;
+        double gridFlowW = 0.0;
+
+        // Solar always used first
+        double solarUsedW = Math.min(solarW, remainingLoadW);
+        remainingLoadW -= solarUsedW;
 
         log.debug(
-                "processEnergyBalance: solarW = {}, loadW = {}, netPowerW = {}",
-                solarW, loadW, netPowerW);
+                "processEnergyBalance: solarUsedW = {}, remainingLoadW = {}",
+                solarUsedW,
+                remainingLoadW);
 
-        if (netPowerW > 0) {
-            double maxChargePossibleW = Math.min(netPowerW, 3000.0);
+        // Grid used second
+        if (remainingLoadW > 0) {
+            gridFlowW = remainingLoadW; // import
+            remainingLoadW = 0;
+
             log.debug(
-                    "processEnergyBalance: surplus detected, maxChargePossibleW = {}",
-                    maxChargePossibleW);
-            batteryFlowW = calculateBatteryCharge(meter, maxChargePossibleW);
-
-        } else if (netPowerW < 0) {
-            double deficitW = Math.abs(netPowerW);
-            double maxDischargePossibleW = Math.min(deficitW, 3000.0);
-            log.debug(
-                    "processEnergyBalance: deficit detected, maxDischargePossibleW = {}",
-                    maxDischargePossibleW);
-            batteryFlowW = -calculateBatteryDischarge(meter, maxDischargePossibleW);
-
-        } else {
-            log.debug("processEnergyBalance: perfect balance, battery idle");
-            meter.setChargingStatus(ChargingStatus.IDLE);
+                    "processEnergyBalance: grid import applied, gridFlowW = {}",
+                    gridFlowW);
         }
 
-        double gridW = (solarW - loadW) - batteryFlowW;
+        // Battery used last (only if load still not satisfied)
+        if (remainingLoadW > 0) {
+            double maxDischargeW = Math.min(remainingLoadW, 3000.0);
+            double dischargedW = calculateBatteryDischarge(meter, maxDischargeW);
+            batteryFlowW = -dischargedW;
+            remainingLoadW -= dischargedW;
+
+            log.debug(
+                    "processEnergyBalance: battery discharge applied, dischargedW = {}, remainingLoadW = {}",
+                    dischargedW,
+                    remainingLoadW);
+        }
+
+        // Surplus handling (solar excess)
+        double surplusW = solarW - solarUsedW;
 
         log.debug(
-                "processEnergyBalance: batteryFlowW = {}, gridW = {}",
-                batteryFlowW, gridW);
+                "processEnergyBalance: surplusW = {}",
+                surplusW);
+
+        if (surplusW > 0) {
+            // Export to grid first
+            gridFlowW -= surplusW; // export
+
+            log.debug(
+                    "processEnergyBalance: solar surplus exported to grid, gridFlowW = {}",
+                    gridFlowW);
+
+            // Charge battery only if needed
+            double maxChargeW = Math.min(surplusW, 3000.0);
+            double chargedW = calculateBatteryCharge(meter, maxChargeW);
+            batteryFlowW += chargedW;
+            gridFlowW += chargedW; // remove charged part from export
+
+            log.debug(
+                    "processEnergyBalance: battery charged using surplus, chargedW = {}, batteryFlowW = {}, gridFlowW = {}",
+                    chargedW,
+                    batteryFlowW,
+                    gridFlowW);
+        }
 
         meter.setSolarProductionW(solarW);
         meter.setHomeConsumptionW(loadW);
         meter.setBatteryPowerW(batteryFlowW);
-        meter.setGridPowerW(gridW);
+        meter.setGridPowerW(gridFlowW);
 
-        updateEnergyAccumulators(meter, solarW, loadW, gridW);
+        log.debug(
+                "processEnergyBalance: final flows | batteryFlowW = {}, gridFlowW = {}",
+                batteryFlowW,
+                gridFlowW);
+
+        updateEnergyAccumulators(meter, solarW, loadW, gridFlowW);
     }
 
     public void updateEnergyAccumulators(MeterSnapshot meter, double solarW, double loadW, double gridW) {

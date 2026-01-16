@@ -87,9 +87,14 @@ public class MeterSimulationService {
             // 3. Electrical Noise (Voltage/Amps for realism)
             environmentSimulator.applyElectricalMetadata(meter);
 
+            Boolean condition = meter.getBatteryCapacityWh() == null || meter.getBatteryCapacityWh() <= 0;
+            meter.setBatterySoc(condition ? 0
+                    : (int) Math
+                            .round((meter.getBatteryRemainingWh() / meter.getBatteryCapacityWh()) * 100));
+            meter.setTimestamp(LocalDateTime.now());
+
             log.debug("simulateLiveReadings: sending live data to kafka with topic = " + rawEnergyTopic);
             log.debug("simulateLiveReadings: sending live data to kafka with value = " + meter);
-            meter.setTimestamp(LocalDateTime.now());
             kafkaTemplate.send(rawEnergyTopic, meter);
 
             redisTemplate.opsForValue()
