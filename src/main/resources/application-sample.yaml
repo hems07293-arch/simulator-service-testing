@@ -57,7 +57,16 @@ simulation-redis:
 property:
   config:
     kafka: 
+      raw-energy-group-id: raw-energy-readers
       raw-energy-topic: RAW_ENERGY_READINGS
-      energy-dispatch-topic: ENERGY_DISPATCH_COMMANDS
-      partition-count: 3
+      raw-energy-partition-count: 3
+
+      dispatch-energy-group-id: dispatch-command-readers
+      dispatch-energy-topic: ENERGY_DISPATCH_COMMANDS
+      dispatch-energy-partition-count: 1
+
+      site-creation-group-id: site-creation-readers
+      site-creation-topic: SITE_CREATION_DETAILS
+      site-creation-partition-count: 1
+
       replica-count: 1
