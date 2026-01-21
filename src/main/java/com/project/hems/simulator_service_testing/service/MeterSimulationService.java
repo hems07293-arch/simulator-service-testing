@@ -9,14 +9,12 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.modelmapper.ModelMapper;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -25,8 +23,7 @@ import java.util.concurrent.TimeUnit;
 @ConfigurationProperties(prefix = "property.config.kafka")
 public class MeterSimulationService {
 
-    // Inject the Redis Template configured earlier
-    private final RedisTemplate<String, MeterSnapshot> redisTemplate;
+    private final Map<String, MeterSnapshot> meterReadings;
     private final MeterManagementService meterManagementService;
     private final MeterRepository meterRepository;
     private final ModelMapper mapper;
@@ -40,16 +37,14 @@ public class MeterSimulationService {
     public void saveMeterSnapshotToDB() {
         log.debug("saveMeterSnapshotToDB: scheduler triggered");
 
-        Map<String, MeterSnapshot> snapshots = meterManagementService.getAllMeterSnapshot();
-
-        if (snapshots.isEmpty()) {
-            log.warn("saveMeterSnapshotToDB: Redis empty, returning back");
+        if (meterReadings.isEmpty()) {
+            log.warn("saveMeterSnapshotToDB: map is empty, returning back");
             return;
         }
 
-        log.info("saveMeterSnapshotToDB: storing {} meters", snapshots.size());
+        log.info("saveMeterSnapshotToDB: storing {} meters", meterReadings.size());
 
-        for (Map.Entry<String, MeterSnapshot> entry : snapshots.entrySet()) {
+        for (Map.Entry<String, MeterSnapshot> entry : meterReadings.entrySet()) {
 
             MeterSnapshot meter = entry.getValue();
 
@@ -62,44 +57,89 @@ public class MeterSimulationService {
 
         log.debug("simulateLiveReadings: scheduler triggered");
 
-        Map<String, MeterSnapshot> snapshots = meterManagementService.getAllMeterSnapshot();
-
-        if (snapshots.isEmpty()) {
-            log.warn("simulateLiveReadings: Redis empty, loading from DB");
+        if (meterReadings.isEmpty()) {
+            log.warn(
+                    "simulateLiveReadings: meterReadings map is empty, loading initial values from DB");
             meterManagementService.getValuesFromDB();
             return;
         }
 
-        log.info("simulateLiveReadings: simulating {} meters", snapshots.size());
+        log.info(
+                "simulateLiveReadings: starting simulation cycle for {} meters",
+                meterReadings.size());
 
-        for (Map.Entry<String, MeterSnapshot> entry : snapshots.entrySet()) {
+        for (Map.Entry<String, MeterSnapshot> entry : meterReadings.entrySet()) {
 
-            String userId = entry.getKey();
+            String siteId = entry.getKey();
             MeterSnapshot meter = entry.getValue();
+
+            log.debug(
+                    "simulateLiveReadings: simulating meter for siteId={}, meterId={}",
+                    siteId,
+                    meter.getMeterId());
 
             // 1. Environmental Inputs
             double solarW = environmentSimulator.calculateSolarProduction();
             double loadW = environmentSimulator.calculateHomeConsumption();
 
+            log.debug(
+                    "simulateLiveReadings: siteId={} solarW={}W loadW={}W",
+                    siteId,
+                    solarW,
+                    loadW);
+
             // 2. Physics Engine (Priority Logic)
             energyPhysicsEngine.processEnergyBalance(meter, solarW, loadW);
+
+            log.debug(
+                    "simulateLiveReadings: siteId={} after physics batteryPowerW={} gridPowerW={}",
+                    siteId,
+                    meter.getBatteryPowerW(),
+                    meter.getGridPowerW());
 
             // 3. Electrical Noise (Voltage/Amps for realism)
             environmentSimulator.applyElectricalMetadata(meter);
 
-            Boolean condition = meter.getBatteryCapacityWh() == null || meter.getBatteryCapacityWh() <= 0;
-            meter.setBatterySoc(condition ? 0
-                    : (int) Math
-                            .round((meter.getBatteryRemainingWh() / meter.getBatteryCapacityWh()) * 100));
+            Boolean invalidCapacity = meter.getBatteryCapacityWh() == null || meter.getBatteryCapacityWh() <= 0;
+
+            if (invalidCapacity) {
+                log.warn(
+                        "simulateLiveReadings: siteId={} invalid batteryCapacityWh={}, forcing SOC=0",
+                        siteId,
+                        meter.getBatteryCapacityWh());
+            }
+
+            meter.setBatterySoc(
+                    invalidCapacity
+                            ? 0
+                            : (int) Math.round(
+                                    (meter.getBatteryRemainingWh() / meter.getBatteryCapacityWh()) * 100));
+
             meter.setTimestamp(LocalDateTime.now());
 
-            log.debug("simulateLiveReadings: sending live data to kafka with topic = " + rawEnergyTopic);
-            log.debug("simulateLiveReadings: sending live data to kafka with value = " + meter);
+            log.debug(
+                    "simulateLiveReadings: siteId={} SOC={}%, voltage={}V current={}A",
+                    siteId,
+                    meter.getBatterySoc(),
+                    meter.getCurrentVoltage(),
+                    meter.getCurrentAmps());
+
+            log.debug(
+                    "simulateLiveReadings: publishing meter snapshot to Kafka topic={}",
+                    rawEnergyTopic);
+
             kafkaTemplate.send(rawEnergyTopic, meter);
 
-            redisTemplate.opsForValue()
-                    .set(userId, meter, 10, TimeUnit.SECONDS);
+            log.info(
+                    "simulateLiveReadings: published snapshot siteId={} meterId={} timestamp={}",
+                    siteId,
+                    meter.getMeterId(),
+                    meter.getTimestamp());
+
+            meterReadings.put(siteId, meter);
         }
+
+        log.info("simulateLiveReadings: simulation cycle completed successfully");
     }
 
 }

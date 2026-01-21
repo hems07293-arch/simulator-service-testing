@@ -27,6 +27,7 @@ public class MeterController {
 
     private final MeterManagementService meterManagementService;
     private final MeterPowerFlowService meterPowerFlowService;
+    private final Map<String, MeterSnapshot> meterReadings;
 
     @GetMapping("/get-meter-data/{userId}")
     public ResponseEntity<MeterSnapshot> getMeterData(@PathVariable Long userId) {
@@ -37,7 +38,7 @@ public class MeterController {
     @GetMapping("/get-all-meter-data")
     public Map<String, MeterSnapshot> getAllMeterData() {
         log.info("get meter data");
-        return meterManagementService.getAllMeterSnapshot();
+        return meterReadings;
     }
 
     @PostMapping("/activate-meter/{siteId}")
