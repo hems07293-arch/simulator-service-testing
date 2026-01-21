@@ -1,9 +1,12 @@
 package com.project.hems.simulator_service_testing.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -14,85 +17,81 @@ public class EnergyPhysicsEngine {
         private static final double DELTA_SECONDS = 5.0;
         private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
 
-        public void processEnergyBalance(MeterSnapshot meter, double solarW, double loadW) {
-                log.debug(
-                                "processEnergyBalance: start | solarW = {}, loadW = {}",
-                                solarW,
-                                loadW);
+        public void processEnergyBalance(
+                        MeterSnapshot meter,
+                        double solarW,
+                        double loadW,
+                        List<EnergyPriority> priorityOrder) {
 
                 double remainingLoadW = loadW;
+                double remainingSolarW = solarW;
+
                 double batteryFlowW = 0.0;
                 double gridFlowW = 0.0;
 
-                // Solar always used first
-                double solarUsedW = Math.min(solarW, remainingLoadW);
-                remainingLoadW -= solarUsedW;
+                // 1. Serve LOAD by priority
+                for (EnergyPriority priority : priorityOrder) {
 
-                log.debug(
-                                "processEnergyBalance: solarUsedW = {}, remainingLoadW = {}",
-                                solarUsedW,
-                                remainingLoadW);
+                        if (remainingLoadW <= 0)
+                                break;
 
-                // Grid used second
-                if (remainingLoadW > 0) {
-                        gridFlowW = remainingLoadW; // import
-                        remainingLoadW = 0;
+                        switch (priority) {
 
-                        log.debug(
-                                        "processEnergyBalance: grid import applied, gridFlowW = {}",
-                                        gridFlowW);
+                                case SOLAR -> {
+                                        double used = Math.min(remainingSolarW, remainingLoadW);
+                                        remainingSolarW -= used;
+                                        remainingLoadW -= used;
+                                }
+
+                                case GRID -> {
+                                        gridFlowW += remainingLoadW; // import
+                                        remainingLoadW = 0;
+                                }
+
+                                case BATTERY -> {
+                                        double maxDischargeW = Math.min(remainingLoadW, 3000.0);
+                                        double dischargedW = calculateBatteryDischarge(meter, maxDischargeW);
+                                        batteryFlowW -= dischargedW;
+                                        remainingLoadW -= dischargedW;
+                                }
+                        }
                 }
 
-                // Battery used last (only if load still not satisfied)
-                if (remainingLoadW > 0) {
-                        double maxDischargeW = Math.min(remainingLoadW, 3000.0);
-                        double dischargedW = calculateBatteryDischarge(meter, maxDischargeW);
-                        batteryFlowW = -dischargedW;
-                        remainingLoadW -= dischargedW;
-
-                        log.debug(
-                                        "processEnergyBalance: battery discharge applied, dischargedW = {}, remainingLoadW = {}",
-                                        dischargedW,
-                                        remainingLoadW);
-                }
-
-                // Surplus handling (solar excess)
-                double surplusW = solarW - solarUsedW;
-
-                log.debug(
-                                "processEnergyBalance: surplusW = {}",
-                                surplusW);
+                // 2. Handle SURPLUS by priority
+                double surplusW = remainingSolarW;
 
                 if (surplusW > 0) {
-                        // Export to grid first
-                        gridFlowW -= surplusW; // export
+                        for (EnergyPriority priority : priorityOrder) {
 
-                        log.debug(
-                                        "processEnergyBalance: solar surplus exported to grid, gridFlowW = {}",
-                                        gridFlowW);
+                                if (surplusW <= 0)
+                                        break;
 
-                        // Charge battery only if needed
-                        double maxChargeW = Math.min(surplusW, 3000.0);
-                        double chargedW = calculateBatteryCharge(meter, maxChargeW);
-                        batteryFlowW += chargedW;
-                        gridFlowW += chargedW; // remove charged part from export
+                                switch (priority) {
 
-                        log.debug(
-                                        "processEnergyBalance: battery charged using surplus, chargedW = {}, batteryFlowW = {}, gridFlowW = {}",
-                                        chargedW,
-                                        batteryFlowW,
-                                        gridFlowW);
+                                        case BATTERY -> {
+                                                double maxChargeW = Math.min(surplusW, 3000.0);
+                                                double chargedW = calculateBatteryCharge(meter, maxChargeW);
+                                                batteryFlowW += chargedW;
+                                                surplusW -= chargedW;
+                                        }
+
+                                        case GRID -> {
+                                                gridFlowW -= surplusW; // export
+                                                surplusW = 0;
+                                        }
+
+                                        case SOLAR -> {
+                                                // Solar cannot absorb surplus
+                                        }
+                                }
+                        }
                 }
 
+                // 3. Persist flows
                 meter.setSolarProductionW(solarW);
                 meter.setHomeConsumptionW(loadW);
                 meter.setBatteryPowerW(batteryFlowW);
                 meter.setGridPowerW(gridFlowW);
-
-                log.debug(
-                                "processEnergyBalance: final flows | batteryFlowW = {}, gridFlowW = {}",
-                                batteryFlowW,
-                                gridFlowW);
 
                 updateEnergyAccumulators(meter, solarW, loadW, gridFlowW);
         }

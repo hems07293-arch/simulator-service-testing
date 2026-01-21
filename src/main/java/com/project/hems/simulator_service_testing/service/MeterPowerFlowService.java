@@ -2,9 +2,12 @@ package com.project.hems.simulator_service_testing.service;
 
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
@@ -78,5 +81,19 @@ public class MeterPowerFlowService {
         meterReadings.put(siteId.toString(), meterSnapshot);
 
         log.info("stopDispatchingPower: Power dispatch started successfully for siteId={}", siteId);
+    }
+
+    public void changeEnergyPriority(Long siteId, List<EnergyPriority> energyPriorities) {
+
+        MeterSnapshot meterSnapshot = meterReadings.get(siteId.toString());
+
+        if (meterSnapshot == null) {
+            log.error("error geting meter detail for given site id " + siteId);
+            return;
+        }
+
+        meterSnapshot.setEnergyPriorities(energyPriorities);
+
+        meterReadings.put(siteId.toString(), meterSnapshot);
     }
 }

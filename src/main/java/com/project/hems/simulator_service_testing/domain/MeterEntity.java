@@ -2,20 +2,27 @@ package com.project.hems.simulator_service_testing.domain;
 
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.util.List;
+
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import com.project.hems.simulator_service_testing.model.BatteryMode;
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
+import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -38,7 +45,6 @@ public class MeterEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(nullable = false, updatable = false, unique = true)
-    @NotNull(message = "meterId cannot be null")
     private Long id;
 
     @Column(nullable = false, unique = true)
@@ -47,6 +53,13 @@ public class MeterEntity {
 
     // --- Cumulative Energy Accumulators (kWh) ---
     // Using precision (15,4) to prevent rounding errors in energy accounting
+
+    @ElementCollection(targetClass = EnergyPriority.class, fetch = FetchType.EAGER)
+    @CollectionTable(name = "energy_priority", joinColumns = @JoinColumn(name = "meter_id"))
+    @Column(name = "energy_priority_id")
+    @Enumerated(EnumType.STRING)
+    @NotNull(message = "energy priority field cannot be null")
+    private List<EnergyPriority> energyPriorities;
 
     @Builder.Default
     @Column(precision = 15, scale = 4)

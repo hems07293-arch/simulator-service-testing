@@ -35,6 +35,7 @@ public class MeterModelMapper {
                             .totalSolarYieldKwh(source.getTotalSolarYieldKwh())
                             .totalHomeUsageKwh(source.getTotalHomeUsageKwh())
                             // Battery state
+                            .energyPriorities(source.getEnergyPriorities())
                             .batteryMode(source.getBatteryMode())
                             .chargingStatus(source.getChargingStatus())
                             .batteryCapacityWh(source.getBatteryCapacityWh())
@@ -64,6 +65,7 @@ public class MeterModelMapper {
                     entity.setTotalHomeUsageKwh(source.getTotalHomeUsageKwh());
 
                     // State
+                    entity.setEnergyPriorities(source.getEnergyPriorities());
                     entity.setBatteryMode(source.getBatteryMode());
                     entity.setChargingStatus(source.getChargingStatus());
                     entity.setBatteryCapacityWh(source.getBatteryCapacityWh());

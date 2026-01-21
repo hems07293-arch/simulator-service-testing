@@ -1,12 +1,14 @@
 package com.project.hems.simulator_service_testing.web.controller;
 
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 import com.project.hems.simulator_service_testing.service.MeterManagementService;
 import com.project.hems.simulator_service_testing.service.MeterPowerFlowService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -57,6 +59,13 @@ public class MeterController {
     public void stopDispatchingEnergy(@PathVariable Long siteId) {
         log.info("stop dispatching power from meter: {}", siteId);
         meterPowerFlowService.stopDispatchingPower(siteId);
+    }
+
+    @PostMapping("/change-priority/{siteId}")
+    public void postMethodName(@PathVariable Long siteId, @RequestBody List<EnergyPriority> energyPriorities) {
+        log.info("changing priority of energy flow");
+        energyPriorities.forEach(e -> System.out.println(e));
+
     }
 
 }
