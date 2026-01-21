@@ -36,7 +36,7 @@ public class MeterSimulationService {
 
     private String rawEnergyTopic;
 
-    @Scheduled(fixedRate = 300000)
+    @Scheduled(fixedRate = 60000)
     public void saveMeterSnapshotToDB() {
         log.debug("saveMeterSnapshotToDB: scheduler triggered");
 
