@@ -61,11 +61,11 @@ public class MeterController {
         meterPowerFlowService.stopDispatchingPower(siteId);
     }
 
-    @PostMapping("/change-priority/{siteId}")
-    public void postMethodName(@PathVariable Long siteId, @RequestBody List<EnergyPriority> energyPriorities) {
+    @PutMapping("/change-priority/{siteId}")
+    public void changePriorityOfSite(@PathVariable Long siteId, @RequestBody List<EnergyPriority> energyPriorities) {
         log.info("changing priority of energy flow");
         energyPriorities.forEach(e -> System.out.println(e));
-
+        meterPowerFlowService.changeEnergyPriority(siteId, energyPriorities);
     }
 
 }
