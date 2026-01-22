@@ -4,7 +4,6 @@ import com.project.hems.simulator_service_testing.domain.MeterEntity;
 import com.project.hems.simulator_service_testing.model.BatteryMode;
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
-import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
 
 import jakarta.transaction.Transactional;
@@ -44,7 +43,6 @@ public class MeterManagementService {
 
                 // Initial Logic States
                 .batterySoc(50)
-                .energyPriorities(List.of(EnergyPriority.SOLAR, EnergyPriority.GRID, EnergyPriority.BATTERY))
                 .batteryMode(BatteryMode.AUTO)
                 .chargingStatus(ChargingStatus.IDLE)
 

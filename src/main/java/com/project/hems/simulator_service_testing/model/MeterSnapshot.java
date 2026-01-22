@@ -9,7 +9,6 @@ import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -101,7 +100,5 @@ public class MeterSnapshot implements Serializable {
     @Max(value = 100, message = "batterySoc cannot be greater than 100")
     private Integer batterySoc;
 
-    @NotNull
-    @NotEmpty(message = "energy priority is required for simulation")
     private List<EnergyPriority> energyPriorities;
 }

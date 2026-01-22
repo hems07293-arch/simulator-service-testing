@@ -40,6 +40,15 @@ public class EnergyPhysicsEngine {
                         List<EnergyPriority> priorityOrder,
                         @Nullable ActiveControlState control) {
 
+                log.info(
+                                "EnergyBalance START | siteId={} meterId={} solarW={} loadW={} priority={} control={}",
+                                meter.getSiteId(),
+                                meter.getMeterId(),
+                                solarW,
+                                loadW,
+                                priorityOrder,
+                                control != null ? control.getBatteryControl() : "NONE");
+
                 double remainingLoadW = loadW;
                 double remainingSolarW = solarW;
 
@@ -49,8 +58,10 @@ public class EnergyPhysicsEngine {
                 // 1. Serve LOAD by priority
                 for (EnergyPriority priority : priorityOrder) {
 
-                        if (remainingLoadW <= 0)
+                        if (remainingLoadW <= 0) {
+                                log.debug("Load fully served, skipping remaining priorities");
                                 break;
+                        }
 
                         switch (priority) {
 
@@ -58,65 +69,97 @@ public class EnergyPhysicsEngine {
                                         double used = Math.min(remainingSolarW, remainingLoadW);
                                         remainingSolarW -= used;
                                         remainingLoadW -= used;
+
+                                        log.debug(
+                                                        "LOAD ← SOLAR | used={}W remainingLoad={}W remainingSolar={}W",
+                                                        used, remainingLoadW, remainingSolarW);
                                 }
 
                                 case GRID -> {
                                         if (isGridImportAllowed(control)) {
+                                                log.debug("LOAD ← GRID | importing {}W", remainingLoadW);
                                                 gridFlowW += remainingLoadW;
                                                 remainingLoadW = 0;
+                                        } else {
+                                                log.warn("GRID import BLOCKED by control");
                                         }
                                 }
 
                                 case BATTERY -> {
+                                        double maxAllowed = getMaxDischargeW(meter, control);
+                                        double allowedDischargeW = Math.min(remainingLoadW, maxAllowed);
 
-                                        double allowedDischargeW = Math.min(
+                                        log.debug(
+                                                        "LOAD ← BATTERY | requested={}W allowed={}W SOC={}%",
                                                         remainingLoadW,
-                                                        getMaxDischargeW(meter, control));
+                                                        allowedDischargeW,
+                                                        meter.getBatterySoc());
 
                                         if (allowedDischargeW > 0) {
                                                 double dischargedW = calculateBatteryDischarge(meter,
                                                                 allowedDischargeW);
                                                 batteryFlowW -= dischargedW;
                                                 remainingLoadW -= dischargedW;
+
+                                                log.debug(
+                                                                "BATTERY discharged={}W remainingLoad={}W",
+                                                                dischargedW, remainingLoadW);
+                                        } else {
+                                                log.warn("BATTERY discharge BLOCKED (SOC/control)");
                                         }
                                 }
-
                         }
                 }
 
                 // 2. Handle SURPLUS by priority
                 double surplusW = remainingSolarW;
+                log.debug("SURPLUS detected={}W", surplusW);
 
                 if (surplusW > 0) {
                         for (EnergyPriority priority : priorityOrder) {
 
-                                if (surplusW <= 0)
+                                if (surplusW <= 0) {
+                                        log.debug("Surplus fully handled");
                                         break;
+                                }
 
                                 switch (priority) {
 
                                         case BATTERY -> {
+                                                double maxAllowed = getMaxChargeW(meter, control);
+                                                double allowedChargeW = Math.min(surplusW, maxAllowed);
 
-                                                double allowedChargeW = Math.min(
+                                                log.debug(
+                                                                "SURPLUS → BATTERY | requested={}W allowed={}W SOC={}%",
                                                                 surplusW,
-                                                                getMaxChargeW(meter, control));
+                                                                allowedChargeW,
+                                                                meter.getBatterySoc());
 
                                                 if (allowedChargeW > 0) {
                                                         double chargedW = calculateBatteryCharge(meter, allowedChargeW);
                                                         batteryFlowW += chargedW;
                                                         surplusW -= chargedW;
+
+                                                        log.debug(
+                                                                        "BATTERY charged={}W remainingSurplus={}W",
+                                                                        chargedW, surplusW);
+                                                } else {
+                                                        log.warn("BATTERY charge BLOCKED (SOC/control)");
                                                 }
                                         }
 
                                         case GRID -> {
                                                 if (isGridExportAllowed(control)) {
+                                                        log.debug("SURPLUS → GRID | exporting {}W", surplusW);
                                                         gridFlowW -= surplusW;
                                                         surplusW = 0;
+                                                } else {
+                                                        log.warn("GRID export BLOCKED by control");
                                                 }
                                         }
 
                                         case SOLAR -> {
-                                                // Solar cannot absorb surplus
+                                                log.debug("SURPLUS → SOLAR skipped (no sink)");
                                         }
                                 }
                         }
@@ -128,7 +171,19 @@ public class EnergyPhysicsEngine {
                 meter.setBatteryPowerW(batteryFlowW);
                 meter.setGridPowerW(gridFlowW);
 
+                // 4. Battery status
+                meter.setChargingStatus(deriveChargingStatus(batteryFlowW));
+
                 updateEnergyAccumulators(meter, solarW, loadW, gridFlowW);
+
+                log.info(
+                                "EnergyBalance END | batteryFlowW={} gridFlowW={} status={} remainingSolar={} remainingLoad={}",
+                                batteryFlowW,
+                                gridFlowW,
+                                deriveChargingStatus(batteryFlowW),
+                                remainingSolarW,
+                                remainingLoadW);
+
         }
 
         public void updateEnergyAccumulators(MeterSnapshot meter, double solarW, double loadW, double gridW) {
@@ -154,7 +209,26 @@ public class EnergyPhysicsEngine {
                 }
         }
 
+        private ChargingStatus deriveChargingStatus(double batteryFlowW) {
+
+                if (batteryFlowW > 0.01) {
+                        return ChargingStatus.CHARGING;
+                }
+
+                if (batteryFlowW < -0.01) {
+                        return ChargingStatus.DISCHARGING;
+                }
+
+                return ChargingStatus.IDLE;
+        }
+
         private double getMaxDischargeW(MeterSnapshot meter, ActiveControlState control) {
+                log.debug(
+                                "MaxDischarge check | mode={} maxDischargeW={} SOC={} minSOC={}",
+                                control.getBatteryControl().getMode(),
+                                control.getBatteryControl().getMaxDischargeW(),
+                                meter.getBatterySoc(),
+                                control.getBatteryControl().getMinSocPercent());
 
                 double defaultMax = 3000.0;
 
@@ -180,6 +254,13 @@ public class EnergyPhysicsEngine {
         }
 
         private double getMaxChargeW(MeterSnapshot meter, ActiveControlState control) {
+
+                log.debug(
+                                "MaxCharge check | mode={} maxChargeW={} SOC={} maxSOC={}",
+                                control.getBatteryControl().getMode(),
+                                control.getBatteryControl().getMaxChargeW(),
+                                meter.getBatterySoc(),
+                                control.getBatteryControl().getMaxSocPercent());
 
                 double defaultMax = 3000.0;
 
