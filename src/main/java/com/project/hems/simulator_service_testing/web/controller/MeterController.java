@@ -1,7 +1,10 @@
 package com.project.hems.simulator_service_testing.web.controller;
 
+import com.project.hems.simulator_service_testing.config.ActiveControlStore;
+import com.project.hems.simulator_service_testing.model.ActiveControlState;
 import com.project.hems.simulator_service_testing.model.BatteryMode;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.model.envoy.DispatchCommand;
 import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 import com.project.hems.simulator_service_testing.service.MeterManagementService;
 import com.project.hems.simulator_service_testing.service.MeterPowerFlowService;
@@ -31,6 +34,7 @@ public class MeterController {
     private final MeterManagementService meterManagementService;
     private final MeterPowerFlowService meterPowerFlowService;
     private final Map<String, MeterSnapshot> meterReadings;
+    private final ActiveControlStore activeControlStore;
 
     @GetMapping("/get-meter-data/{siteId}")
     public ResponseEntity<MeterSnapshot> getMeterData(@PathVariable Long siteId) {
@@ -73,6 +77,20 @@ public class MeterController {
     public void changeBatteryMode(@PathVariable Long siteId, @RequestBody BatteryMode batteryMode) {
         log.info("changing battery mode to " + batteryMode);
         meterPowerFlowService.changeBatteryMode(siteId, batteryMode);
+    }
+
+    @PostMapping("/dispatch")
+    public ResponseEntity<Void> applyDispatch(@RequestBody DispatchCommand command) {
+        log.info("applyDispatch: applying dispatch command received from envoy " + command);
+        ActiveControlState control = new ActiveControlState(
+                command.getBatteryControl(),
+                command.getGridControl(),
+                command.getEnergyPriority(),
+                command.getValidUntil());
+
+        activeControlStore.applyDispatch(command.getSiteId().toString(), control);
+
+        return ResponseEntity.accepted().build();
     }
 
 }

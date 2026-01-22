@@ -1,7 +1,10 @@
 package com.project.hems.simulator_service_testing.service;
 
+import com.project.hems.simulator_service_testing.config.ActiveControlStore;
 import com.project.hems.simulator_service_testing.domain.MeterEntity;
+import com.project.hems.simulator_service_testing.model.ActiveControlState;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -14,7 +17,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -30,6 +35,7 @@ public class MeterSimulationService {
         private final KafkaTemplate<String, Object> kafkaTemplate;
         private final EnergyPhysicsEngine energyPhysicsEngine;
         private final EnvironmentSimulator environmentSimulator;
+        private final ActiveControlStore activeControlStore;
 
         private String rawEnergyTopic;
 
@@ -89,8 +95,17 @@ public class MeterSimulationService {
                                         loadW);
 
                         // 2. Physics Engine (Priority Logic)
-                        energyPhysicsEngine.processEnergyBalance(meter, solarW, loadW,
-                                        meter.getEnergyPriorities());
+                        Optional<ActiveControlState> activeControl = activeControlStore.getActiveControl(siteId);
+
+                        List<EnergyPriority> priorities = activeControl.map(ActiveControlState::getEnergyPriorities)
+                                        .orElse(meter.getEnergyPriorities());
+
+                        energyPhysicsEngine.processEnergyBalance(
+                                        meter,
+                                        solarW,
+                                        loadW,
+                                        priorities,
+                                        activeControl.orElse(null));
 
                         log.debug(
                                         "simulateLiveReadings: siteId={} after physics batteryPowerW={} gridPowerW={}",

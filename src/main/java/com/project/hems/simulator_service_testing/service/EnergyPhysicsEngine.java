@@ -4,10 +4,14 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import com.project.hems.simulator_service_testing.model.ActiveControlState;
+import com.project.hems.simulator_service_testing.model.BatteryMode;
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.model.envoy.BatteryControl;
 import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 
+import jakarta.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -17,11 +21,24 @@ public class EnergyPhysicsEngine {
         private static final double DELTA_SECONDS = 5.0;
         private static final double SECONDS_TO_HOURS = 1.0 / 3600.0;
 
+        private boolean isGridImportAllowed(ActiveControlState control) {
+                return control == null
+                                || control.getGridControl() == null
+                                || control.getGridControl().getAllowImport();
+        }
+
+        private boolean isGridExportAllowed(ActiveControlState control) {
+                return control == null
+                                || control.getGridControl() == null
+                                || control.getGridControl().getAllowExport();
+        }
+
         public void processEnergyBalance(
                         MeterSnapshot meter,
                         double solarW,
                         double loadW,
-                        List<EnergyPriority> priorityOrder) {
+                        List<EnergyPriority> priorityOrder,
+                        @Nullable ActiveControlState control) {
 
                 double remainingLoadW = loadW;
                 double remainingSolarW = solarW;
@@ -44,16 +61,26 @@ public class EnergyPhysicsEngine {
                                 }
 
                                 case GRID -> {
-                                        gridFlowW += remainingLoadW; // import
-                                        remainingLoadW = 0;
+                                        if (isGridImportAllowed(control)) {
+                                                gridFlowW += remainingLoadW;
+                                                remainingLoadW = 0;
+                                        }
                                 }
 
                                 case BATTERY -> {
-                                        double maxDischargeW = Math.min(remainingLoadW, 3000.0);
-                                        double dischargedW = calculateBatteryDischarge(meter, maxDischargeW);
-                                        batteryFlowW -= dischargedW;
-                                        remainingLoadW -= dischargedW;
+
+                                        double allowedDischargeW = Math.min(
+                                                        remainingLoadW,
+                                                        getMaxDischargeW(meter, control));
+
+                                        if (allowedDischargeW > 0) {
+                                                double dischargedW = calculateBatteryDischarge(meter,
+                                                                allowedDischargeW);
+                                                batteryFlowW -= dischargedW;
+                                                remainingLoadW -= dischargedW;
+                                        }
                                 }
+
                         }
                 }
 
@@ -69,15 +96,23 @@ public class EnergyPhysicsEngine {
                                 switch (priority) {
 
                                         case BATTERY -> {
-                                                double maxChargeW = Math.min(surplusW, 3000.0);
-                                                double chargedW = calculateBatteryCharge(meter, maxChargeW);
-                                                batteryFlowW += chargedW;
-                                                surplusW -= chargedW;
+
+                                                double allowedChargeW = Math.min(
+                                                                surplusW,
+                                                                getMaxChargeW(meter, control));
+
+                                                if (allowedChargeW > 0) {
+                                                        double chargedW = calculateBatteryCharge(meter, allowedChargeW);
+                                                        batteryFlowW += chargedW;
+                                                        surplusW -= chargedW;
+                                                }
                                         }
 
                                         case GRID -> {
-                                                gridFlowW -= surplusW; // export
-                                                surplusW = 0;
+                                                if (isGridExportAllowed(control)) {
+                                                        gridFlowW -= surplusW;
+                                                        surplusW = 0;
+                                                }
                                         }
 
                                         case SOLAR -> {
@@ -117,6 +152,56 @@ public class EnergyPhysicsEngine {
                                         meter.getTotalGridImportKwh() + (Math.abs(gridW) * conversionFactor));
                         log.debug("updateEnergyAccumulators: grid import accumulated");
                 }
+        }
+
+        private double getMaxDischargeW(MeterSnapshot meter, ActiveControlState control) {
+
+                double defaultMax = 3000.0;
+
+                if (control == null || control.getBatteryControl() == null) {
+                        return defaultMax;
+                }
+
+                BatteryControl bc = control.getBatteryControl();
+
+                if (bc.getMode() == BatteryMode.FORCE_CHARGE) {
+                        return 0; // discharge forbidden
+                }
+
+                if (bc.getMaxDischargeW() != null) {
+                        defaultMax = bc.getMaxDischargeW();
+                }
+
+                if (meter.getBatterySoc() <= bc.getMinSocPercent()) {
+                        return 0;
+                }
+
+                return defaultMax;
+        }
+
+        private double getMaxChargeW(MeterSnapshot meter, ActiveControlState control) {
+
+                double defaultMax = 3000.0;
+
+                if (control == null || control.getBatteryControl() == null) {
+                        return defaultMax;
+                }
+
+                BatteryControl bc = control.getBatteryControl();
+
+                if (bc.getMode() == BatteryMode.FORCE_DISCHARGE) {
+                        return 0; // charge forbidden
+                }
+
+                if (bc.getMaxChargeW() != null) {
+                        defaultMax = bc.getMaxChargeW();
+                }
+
+                if (meter.getBatterySoc() >= bc.getMaxSocPercent()) {
+                        return 0;
+                }
+
+                return defaultMax;
         }
 
         public double calculateBatteryCharge(MeterSnapshot meter, double chargeW) {
