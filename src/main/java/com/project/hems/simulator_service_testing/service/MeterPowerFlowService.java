@@ -1,5 +1,6 @@
 package com.project.hems.simulator_service_testing.service;
 
+import com.project.hems.simulator_service_testing.model.BatteryMode;
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
@@ -93,6 +94,19 @@ public class MeterPowerFlowService {
         }
 
         meterSnapshot.setEnergyPriorities(energyPriorities);
+
+        meterReadings.put(siteId.toString(), meterSnapshot);
+    }
+
+    public void changeBatteryMode(Long siteId, BatteryMode batteryMode) {
+        MeterSnapshot meterSnapshot = meterReadings.get(siteId.toString());
+
+        if (meterSnapshot == null) {
+            log.error("error geting meter detail for given site id " + siteId);
+            return;
+        }
+
+        meterSnapshot.setBatteryMode(batteryMode);
 
         meterReadings.put(siteId.toString(), meterSnapshot);
     }

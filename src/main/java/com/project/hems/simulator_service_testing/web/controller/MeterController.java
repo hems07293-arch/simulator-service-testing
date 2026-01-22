@@ -1,5 +1,6 @@
 package com.project.hems.simulator_service_testing.web.controller;
 
+import com.project.hems.simulator_service_testing.model.BatteryMode;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 import com.project.hems.simulator_service_testing.service.MeterManagementService;
@@ -31,10 +32,10 @@ public class MeterController {
     private final MeterPowerFlowService meterPowerFlowService;
     private final Map<String, MeterSnapshot> meterReadings;
 
-    @GetMapping("/get-meter-data/{userId}")
-    public ResponseEntity<MeterSnapshot> getMeterData(@PathVariable Long userId) {
-        log.info("get meter data for userId: {}", userId);
-        return new ResponseEntity<>(meterManagementService.getMeterData(userId), HttpStatus.OK);
+    @GetMapping("/get-meter-data/{siteId}")
+    public ResponseEntity<MeterSnapshot> getMeterData(@PathVariable Long siteId) {
+        log.info("get meter data for siteId: {}", siteId);
+        return new ResponseEntity<>(meterManagementService.getMeterData(siteId), HttpStatus.OK);
     }
 
     @GetMapping("/get-all-meter-data")
@@ -66,6 +67,12 @@ public class MeterController {
         log.info("changing priority of energy flow");
         energyPriorities.forEach(e -> System.out.println(e));
         meterPowerFlowService.changeEnergyPriority(siteId, energyPriorities);
+    }
+
+    @PutMapping("/change-battery-mode/{siteId}")
+    public void changeBatteryMode(@PathVariable Long siteId, @RequestBody BatteryMode batteryMode) {
+        log.info("changing battery mode to " + batteryMode);
+        meterPowerFlowService.changeBatteryMode(siteId, batteryMode);
     }
 
 }
