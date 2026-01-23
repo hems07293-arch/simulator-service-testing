@@ -4,12 +4,15 @@ spring:
       host: localhost
       port: 6379
       timeout: 200ms
+
   application:
     name: simulator-service-testing
+
   datasource:
     url: jdbc:mysql://localhost:3306/simulator_service
     username: 
     password: 
+
   jpa:
     hibernate:
       ddl-auto: update
@@ -17,35 +20,11 @@ spring:
 
   kafka:
     producer:
+      acks: 1
       bootstrap-servers:
       - localhost:9092
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer  
-    
-    consumer:
-      bootstrap-servers:
-      - localhost:9092
-      group-id: dispatch-command-readers
-      auto-offset-reset: earliest
-
-      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
-    properties:
-      # Ignore the type info sent by the producer
-      spring.json.use.type.headers: false
-      spring/.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
-      spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
-      # Ensure the package is trusted
-      spring.json.trusted.packages: "*"
-      spring.json.type.mapping: "com.project.hems.envoy_manager_service.model.EnergyDispatchCommand:com.project.hems.simulator_service_testing.model.EnergyDispatchCommand"
-      # Specify the local class to always use for this consumer
-      spring.json.value.default.type: com.project.hems.simulator_service_testing.model.EnergyDispatchCommand
-
-logging:
-  level:
-    org.hibernate.SQL: DEBUG
-    org.hibernate.tool.schema: DEBUG
-    com.project.hems.simulator_service_testing: debug
 
 server:
   port: 9010
@@ -60,13 +39,5 @@ property:
       raw-energy-group-id: raw-energy-readers
       raw-energy-topic: RAW_ENERGY_READINGS
       raw-energy-partition-count: 3
-
-      dispatch-energy-group-id: dispatch-command-readers
-      dispatch-energy-topic: ENERGY_DISPATCH_COMMANDS
-      dispatch-energy-partition-count: 1
-
-      site-creation-group-id: site-creation-readers
-      site-creation-topic: SITE_CREATION_DETAILS
-      site-creation-partition-count: 1
 
       replica-count: 1
