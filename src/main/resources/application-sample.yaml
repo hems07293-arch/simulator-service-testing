@@ -1,10 +1,4 @@
 spring:
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      timeout: 200ms
-
   application:
     name: simulator-service-testing
 
@@ -20,24 +14,43 @@ spring:
 
   kafka:
     producer:
-      acks: 1
       bootstrap-servers:
-      - localhost:9092
+        - localhost:9092
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer  
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+    consumer:
+      bootstrap-servers:
+        - localhost:9092
+      group-id: dispatch-command-readers
+      auto-offset-reset: earliest
+
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+    properties:
+      spring/.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+      spring.deserializer.value.delegate.class: org.apache.kafka.common.serialization.LongDeserializer
+
 
 server:
   port: 9010
 
-simulation-redis:
-  config:
-    redis-key: "simulator:siteId:"
+
 
 property:
   config:
-    kafka: 
+    kafka:
       raw-energy-group-id: raw-energy-readers
       raw-energy-topic: RAW_ENERGY_READINGS
       raw-energy-partition-count: 3
 
+      dispatch-energy-group-id: dispatch-command-readers
+      dispatch-energy-topic: ENERGY_DISPATCH_COMMANDS
+      dispatch-energy-partition-count: 1
+
+      site-creation-group-id: site-creation-readers
+      site-creation-topic: SITE_CREATION_DETAILS
+      site-creation-partition-count: 1
+
       replica-count: 1
+

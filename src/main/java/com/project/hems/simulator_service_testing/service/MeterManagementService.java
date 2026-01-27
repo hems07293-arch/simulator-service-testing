@@ -1,11 +1,12 @@
 package com.project.hems.simulator_service_testing.service;
 
+
 import com.project.hems.simulator_service_testing.domain.MeterEntity;
 import com.project.hems.simulator_service_testing.model.BatteryMode;
 import com.project.hems.simulator_service_testing.model.ChargingStatus;
 import com.project.hems.simulator_service_testing.model.MeterSnapshot;
+import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 import com.project.hems.simulator_service_testing.repository.MeterRepository;
-
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -14,7 +15,8 @@ import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -25,6 +27,8 @@ public class MeterManagementService {
     private final Map<String, MeterSnapshot> meterReadings;
     private final MeterRepository meterRepository;
     private final ModelMapper mapper;
+
+
 
     // 1. Create / Activate a meter (Persist to DB + Cache to Bean Map)
     @Transactional
@@ -60,6 +64,9 @@ public class MeterManagementService {
 
                 .currentVoltage(230.0)
                 .currentAmps(0.0)
+                //add karelu che site create kariee etle energy priority set nati thati etle
+                .energyPriorities(List.of(EnergyPriority.SOLAR, EnergyPriority.GRID, EnergyPriority.BATTERY)
+                )
                 .build();
 
         log.debug("activateMeter: initial meter snapshot created for siteId={}", siteId);

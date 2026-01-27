@@ -1,17 +1,13 @@
 package com.project.hems.simulator_service_testing.model;
 
-import java.time.Instant;
-import java.util.List;
 
 import com.project.hems.simulator_service_testing.model.envoy.BatteryControl;
 import com.project.hems.simulator_service_testing.model.envoy.EnergyPriority;
 import com.project.hems.simulator_service_testing.model.envoy.GridControl;
+import lombok.*;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import java.time.Instant;
+import java.util.List;
 
 @Data
 @ToString
@@ -20,7 +16,7 @@ import lombok.ToString;
 @Builder
 public class ActiveControlState {
 
-    private BatteryControl batteryControl;
+    private     BatteryControl batteryControl;
     private GridControl gridControl;
     private List<EnergyPriority> energyPriorities;
 

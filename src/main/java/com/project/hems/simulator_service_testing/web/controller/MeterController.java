@@ -1,5 +1,6 @@
 package com.project.hems.simulator_service_testing.web.controller;
 
+
 import com.project.hems.simulator_service_testing.config.ActiveControlStore;
 import com.project.hems.simulator_service_testing.model.ActiveControlState;
 import com.project.hems.simulator_service_testing.model.BatteryMode;
@@ -7,21 +8,13 @@ import com.project.hems.simulator_service_testing.model.MeterSnapshot;
 import com.project.hems.simulator_service_testing.model.envoy.DispatchCommand;
 import com.project.hems.simulator_service_testing.service.MeterManagementService;
 import com.project.hems.simulator_service_testing.service.MeterPowerFlowService;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import java.util.Map;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -37,7 +30,8 @@ public class MeterController {
     @GetMapping("/get-meter-data/{siteId}")
     public ResponseEntity<MeterSnapshot> getMeterData(@PathVariable Long siteId) {
         log.info("get meter data for siteId: {}", siteId);
-        return new ResponseEntity<>(meterManagementService.getMeterData(siteId), HttpStatus.OK);
+//        return new ResponseEntity<>(meterManagementService.getMeterData(siteId), HttpStatus.OK);
+        return ResponseEntity.ok(meterManagementService.getMeterData(siteId));
     }
 
     @GetMapping("/get-all-meter-data")
@@ -46,7 +40,7 @@ public class MeterController {
         return meterReadings;
     }
 
-    @PostMapping("/activate-meter/{siteId}")
+    @PostMapping("/activate-meter/{siteId}")//change karelu che UUID ->  Long in create meter service ID paramter
     public void activateMeterData(@PathVariable Long siteId, @RequestBody Double batteryCapacity) {
         log.info("activate meter: {}", siteId, batteryCapacity);
         meterManagementService.activateMeter(siteId, batteryCapacity);

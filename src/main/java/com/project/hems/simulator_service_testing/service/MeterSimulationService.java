@@ -1,5 +1,6 @@
 package com.project.hems.simulator_service_testing.service;
 
+
 import com.project.hems.simulator_service_testing.config.ActiveControlStore;
 import com.project.hems.simulator_service_testing.domain.MeterEntity;
 import com.project.hems.simulator_service_testing.model.ActiveControlState;
@@ -9,7 +10,6 @@ import com.project.hems.simulator_service_testing.repository.MeterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-
 import org.modelmapper.ModelMapper;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -60,6 +60,7 @@ public class MeterSimulationService {
 
         @Scheduled(fixedRate = 5000)
         public void simulateLiveReadings() {
+                int soc;
 
                 log.debug("simulateLiveReadings: scheduler triggered");
 
@@ -128,13 +129,24 @@ public class MeterSimulationService {
                                                 meter.getBatteryCapacityWh());
                         }
 
-                        meter.setBatterySoc(
-                                        invalidCapacity
-                                                        ? 0
-                                                        : (int) Math.round(
-                                                                        (meter.getBatteryRemainingWh()
-                                                                                        / meter.getBatteryCapacityWh())
-                                                                                        * 100));
+                        if (invalidCapacity) {
+                                soc = 0;
+                        } else {
+                                soc = (int) Math.round(
+                                        (meter.getBatteryRemainingWh() / meter.getBatteryCapacityWh()) * 100
+                                );
+                        }
+
+                        soc = Math.max(0, Math.min(100, soc));
+
+                        meter.setBatterySoc(soc);
+//                        meter.setBatterySoc(
+//                                        invalidCapacity
+//                                                        ? 0
+//                                                        : (int) Math.round(
+//                                                                        (meter.getBatteryRemainingWh()
+//                                                                                        / meter.getBatteryCapacityWh())
+//                                                                                        * 100));
 
                         meter.setTimestamp(LocalDateTime.now());
 
